@@ -7,14 +7,14 @@ import { getProjectById } from "@/lib/actions/projects";
 export default async function ProjectPage({
   params,
 }: {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }) {
   const user = await getCurrentUser();
   if (!user || !user.name || !user.email) {
     redirect("/login");
   }
-
-  const { project, error } = await getProjectById(params.id);
+  const { id } = await params;
+  const { project, error } = await getProjectById(id);
 
   if (error || !project) {
     console.error("Error Getting project:", error);

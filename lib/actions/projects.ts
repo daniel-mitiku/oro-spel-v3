@@ -158,7 +158,7 @@ export async function getProjectById(projectId: string) {
  */
 export async function updateProject(
   projectId: string,
-  data: { title?: string; description?: string }
+  data: { title?: string; description?: string; content?: string }
 ): Promise<{ error?: string } | { project: ProjectForDashboard }> {
   const user = await getCurrentUser();
   if (!user) {
@@ -171,6 +171,7 @@ export async function updateProject(
       data: {
         title: data.title,
         description: data.description,
+        content: data.content,
       },
       include: {
         sentences: true,

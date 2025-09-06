@@ -6,7 +6,8 @@
     "dev": "next dev --turbopack",
     "build": "next build --turbopack",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "corpus:process": "node scripts/pre-process-corpus.mjs"
   },
   "dependencies": {
     "@prisma/client": "6.15.0",

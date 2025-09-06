@@ -1,22 +1,29 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Badge } from "@/components/ui/badge";
-import { AdvancedWritingAssistant } from "@/components/writing/advanced-writing-assistant";
-import { QuizGame } from "@/components/writing/quiz-game";
-import { ArrowLeft, Edit, BookOpen, BarChart3 } from "lucide-react";
-import type { ProjectForDashboard } from "@/lib/types";
+import { useDebounce } from "@/lib/hooks/useDebouce";
 import { updateProject } from "@/lib/actions/projects";
+import type { ProjectForDashboard } from "@/lib/types";
+
+import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"; // ADDED
+import { AdvancedWritingAssistant } from "@/components/writing/advanced-writing-assistant";
+import { ExportDialog } from "@/components/projects/export-dialog"; // ADDED
+import {
+  ArrowLeft,
+  Edit,
+  Edit3,
+  MoreVertical,
+  Save,
+  Download,
+} from "lucide-react"; // MODIFIED
+import { toast } from "sonner";
 
 interface ProjectEditorProps {
   project: ProjectForDashboard;
@@ -24,207 +31,133 @@ interface ProjectEditorProps {
 
 export function ProjectEditor({ project: initialProject }: ProjectEditorProps) {
   const [project, setProject] = useState(initialProject);
+  const [content, setContent] = useState(initialProject.content);
   const [mode, setMode] = useState<"textarea" | "guided">("textarea");
+  const [isSaving, setIsSaving] = useState(false);
   const router = useRouter();
 
-  const handleProjectUpdate = async (updates: Partial<ProjectForDashboard>) => {
-    try {
-      // Only send fields that are actually provided and changed
-      const payload: { title?: string; description?: string } = {};
-      if (
-        typeof updates.title === "string" &&
-        updates.title !== project.title
-      ) {
-        payload.title = updates.title.trim();
-      }
-      if (
-        typeof updates.description === "string" &&
-        updates.description !== project.description
-      ) {
-        payload.description =
-          updates.description.trim() === ""
-            ? undefined
-            : updates.description.trim();
-      }
+  // MODIFIED: Debounce timer increased to 15 seconds (15000ms)
+  const debouncedContent = useDebounce(content, 15000);
 
-      // If nothing to update, skip
-      if (Object.keys(payload).length === 0) return;
+  const handleSetContent = (newContent: string) => {
+    if (newContent === content || mode === "guided") return; // Prevent unnecessary updates
+    setContent(newContent);
+  };
 
-      const result = await updateProject(project.id, payload);
-
-      if (result && "project" in result && result.project) {
-        setProject(result.project);
-      } else if (result && "error" in result && result.error) {
-        console.error("Failed to update project:", result.error);
-      }
-    } catch (error) {
-      console.error("Failed to update project:", error);
+  // NEW: Manual save handler
+  const handleManualSave = async () => {
+    setIsSaving(true);
+    const result = await updateProject(project.id, {
+      content: content, // Save the current, non-debounced content
+    });
+    if (result && "project" in result) {
+      setProject(result.project);
+      toast.success("Project Saved", {
+        description: "Your writing has been successfully saved.",
+      });
+    } else {
+      toast.error("Save Failed", {
+        description: result.error || "Could not save your changes.",
+      });
     }
+    setIsSaving(false);
   };
 
-  const getStatusColor = (completionRate: number) => {
-    if (completionRate >= 100) return "bg-green-500";
-    if (completionRate >= 70) return "bg-yellow-500";
-    if (completionRate >= 30) return "bg-orange-500";
-    return "bg-gray-400";
-  };
+  useEffect(() => {
+    const autoSaveContent = async () => {
+      // MODIFIED: Only autosave if the content has changed AND we are in 'textarea' mode.
+      if (debouncedContent !== project.content && mode === "textarea") {
+        setIsSaving(true);
+        const result = await updateProject(project.id, {
+          content: debouncedContent,
+        });
+        if (result && "project" in result) {
+          setProject(result.project);
+          toast.success("Progress Saved", {
+            description: "Your writing has been auto-saved.",
+          });
+        } else {
+          toast.warning("Save Failed", {
+            description: "Could not save your changes.",
+          });
+        }
+        setIsSaving(false);
+      }
+    };
+
+    autoSaveContent();
+  }, [debouncedContent, project.id, project.content, mode]); // MODIFIED: Added mode dependency
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
           <Button variant="ghost" onClick={() => router.back()}>
             <ArrowLeft className="mr-2 h-4 w-4" />
-            Back
+            Back to Dashboard
           </Button>
           <div>
-            <h1 className="text-3xl font-bold text-balance">{project.title}</h1>
-            {project.description && (
-              <p className="text-muted-foreground mt-1">
-                {project.description}
-              </p>
-            )}
+            <h1 className="text-3xl font-bold">{project.title}</h1>
           </div>
         </div>
         <div className="flex items-center gap-4">
-          <Badge variant="outline" className="gap-2">
-            <div
-              className={`w-2 h-2 rounded-full ${getStatusColor(
-                project.stats.completionRate
-              )}`}
-            />
-            {Math.round(project.stats.completionRate)}% Complete
-          </Badge>
+          {isSaving && (
+            <span className="text-sm text-muted-foreground animate-pulse">
+              Saving...
+            </span>
+          )}
+          <div className="flex items-center gap-2 p-1 rounded-lg border bg-muted">
+            <Button
+              variant={mode === "textarea" ? "secondary" : "ghost"}
+              size="sm"
+              onClick={() => setMode("textarea")}
+              className="gap-2"
+            >
+              <Edit className="h-4 w-4" />
+              Freestyle
+            </Button>
+            <Button
+              variant={mode === "guided" ? "secondary" : "ghost"}
+              size="sm"
+              onClick={() => setMode("guided")}
+              className="gap-2"
+            >
+              <Edit3 className="h-4 w-4" />
+              Guided
+            </Button>
+          </div>
+          {/* ADDED: Dropdown Menu for Save and Export */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="icon">
+                <MoreVertical className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={handleManualSave} disabled={isSaving}>
+                <Save className="mr-2 h-4 w-4" />
+                <span>Save Project</span>
+              </DropdownMenuItem>
+              {/* The ExportDialog is now triggered from here */}
+              <ExportDialog
+                project={project}
+                trigger={
+                  <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
+                    <Download className="mr-2 h-4 w-4" />
+                    <span>Export</span>
+                  </DropdownMenuItem>
+                }
+              />
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
 
-      {/* Project Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <Card>
-          <CardContent className="p-4">
-            <div className="text-2xl font-bold">
-              {project.stats.totalSentences}
-            </div>
-            <p className="text-xs text-muted-foreground">Total Sentences</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="text-2xl font-bold text-green-600">
-              {project.stats.completeSentences}
-            </div>
-            <p className="text-xs text-muted-foreground">Complete</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="text-2xl font-bold text-yellow-600">
-              {project.stats.partialSentences}
-            </div>
-            <p className="text-xs text-muted-foreground">Partial</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="text-2xl font-bold text-red-600">
-              {project.stats.unknownWords}
-            </div>
-            <p className="text-xs text-muted-foreground">Unknown Words</p>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Main Content */}
-      <Tabs defaultValue="writing" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-3">
-          <TabsTrigger value="writing" className="gap-2">
-            <Edit className="h-4 w-4" />
-            Writing
-          </TabsTrigger>
-          <TabsTrigger value="quiz" className="gap-2">
-            <BookOpen className="h-4 w-4" />
-            Practice Quiz
-          </TabsTrigger>
-          <TabsTrigger value="analytics" className="gap-2">
-            <BarChart3 className="h-4 w-4" />
-            Analytics
-          </TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="writing" className="space-y-4">
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2">
-              <span className="text-sm font-medium">Mode:</span>
-              <Button
-                variant={mode === "textarea" ? "default" : "outline"}
-                size="sm"
-                onClick={() => setMode("textarea")}
-              >
-                Freestyle
-              </Button>
-              <Button
-                variant={mode === "guided" ? "default" : "outline"}
-                size="sm"
-                onClick={() => setMode("guided")}
-              >
-                Guided
-              </Button>
-            </div>
-          </div>
-
-          <AdvancedWritingAssistant
-            project={project}
-            //onProjectUpdate={handleProjectUpdate}
-            //mode={mode}
-          />
-        </TabsContent>
-
-        <TabsContent value="quiz">
-          <Card>
-            <CardHeader>
-              <CardTitle>Practice Quiz</CardTitle>
-              <CardDescription>
-                Test your Oromo writing skills with interactive exercises
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <QuizGame
-                sentences={[
-                  {
-                    correct: "Ani barreessuu jaalladha",
-                    hint: "Ani baresuu jaladha",
-                  },
-                  { correct: "Mana keessa jira", hint: "Mana kesa jira" },
-                  {
-                    correct: "Bishaan dhuguu barbaada",
-                    hint: "Bishan dhugu barbaada",
-                  },
-                ]}
-                onComplete={(score) => {
-                  console.log("Quiz completed with score:", score);
-                }}
-              />
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="analytics">
-          <Card>
-            <CardHeader>
-              <CardTitle>Project Analytics</CardTitle>
-              <CardDescription>
-                Detailed insights into your writing progress
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="text-center py-12 text-muted-foreground">
-                Analytics dashboard coming soon...
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
+      <AdvancedWritingAssistant
+        projectContent={content}
+        onContentChange={handleSetContent}
+        mode={mode}
+      />
     </div>
   );
 }
