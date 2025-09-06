@@ -48,7 +48,10 @@ export async function registerUser(formData: FormData) {
     const token = await generateToken(user.id);
 
     // Set cookie
-    cookies().set("auth-token", token, {
+    (
+      await // Set cookie
+      cookies()
+    ).set("auth-token", token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
@@ -87,7 +90,7 @@ export async function loginUser(formData: FormData) {
     // Use the now async generateToken function
     const token = await generateToken(user.id);
 
-    cookies().set("auth-token", token, {
+    (await cookies()).set("auth-token", token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
@@ -99,21 +102,27 @@ export async function loginUser(formData: FormData) {
     console.error("Login error:", error);
     // The redirect function throws an error, so you must re-throw it to avoid the client-side code running
     // The previous error was a NEXT_REDIRECT that was being caught and logged but not re-thrown.
-    // if (error && typeof error === 'object' && 'digest' in error && error.digest.includes('NEXT_REDIRECT')) {
-    //     throw error;
-    // }
+    if (
+      error &&
+      typeof error === "object" &&
+      "digest" in error &&
+      typeof (error as { digest?: unknown }).digest === "string" &&
+      (error as { digest: string }).digest.includes("NEXT_REDIRECT")
+    ) {
+      throw error;
+    }
     return { error: "Login failed" };
   }
 }
 
 export async function logoutUser() {
-  cookies().delete("auth-token");
+  (await cookies()).delete("auth-token");
   redirect("/login");
 }
 
 export async function getCurrentUser() {
   const cookieStore = cookies();
-  const token = cookieStore.get("auth-token")?.value;
+  const token = (await cookieStore).get("auth-token")?.value;
 
   if (!token) {
     return null;

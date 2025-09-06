@@ -1,102 +1,177 @@
-import Image from "next/image";
+import { redirect } from "next/navigation";
+import { cookies } from "next/headers";
+import { verifyToken } from "@/lib/auth";
+import Link from "next/link";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { BookOpen, Edit, Users, TrendingUp } from "lucide-react";
 
-export default function Home() {
+export default async function HomePage() {
+  const cookieStore = cookies();
+  const token = (await cookieStore).get("auth-token")?.value;
+
+  const user = token ? await verifyToken(token).catch(() => null) : null;
+
+  // If user is logged in, redirect to dashboard
+  if (token && user) {
+    redirect("/dashboard");
+  }
+
   return (
-    <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="font-mono list-inside list-decimal text-sm/6 text-center sm:text-left">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] font-mono font-semibold px-1 py-0.5 rounded">
-              app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
-
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+    <div className="min-h-screen bg-background">
+      {/* Navigation */}
+      <nav className="border-b">
+        <div className="container mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex justify-between items-center h-16">
+            <div className="flex items-center space-x-2">
+              <BookOpen className="h-6 w-6 text-accent" />
+              <span className="font-bold text-lg">Oromo Writing Assistant</span>
+            </div>
+            <div className="flex space-x-2">
+              <Button variant="ghost" asChild>
+                <Link href="/login">Sign In</Link>
+              </Button>
+              <Button asChild>
+                <Link href="/register">Get Started</Link>
+              </Button>
+            </div>
+          </div>
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
+      </nav>
+
+      {/* Hero Section */}
+      <section className="py-20 px-4 text-center">
+        <div className="container mx-auto max-w-4xl">
+          <h1 className="text-4xl md:text-6xl font-bold text-balance mb-6">
+            Master <span className="text-accent">Oromo Writing</span> with
+            AI-Powered Assistance
+          </h1>
+          <p className="text-xl text-muted-foreground text-pretty mb-8 max-w-2xl mx-auto">
+            Learn proper letter duplication, improve your Oromo language skills,
+            and write with confidence using our intelligent writing assistant.
+          </p>
+          <div className="flex flex-col sm:flex-row gap-4 justify-center">
+            <Button size="lg" asChild>
+              <Link href="/register">Start Writing Today</Link>
+            </Button>
+            <Button size="lg" variant="outline" asChild>
+              <Link href="/login">Sign In</Link>
+            </Button>
+          </div>
+        </div>
+      </section>
+
+      {/* Features Section */}
+      <section className="py-20 px-4 bg-muted/50">
+        <div className="container mx-auto max-w-6xl">
+          <div className="text-center mb-12">
+            <h2 className="text-3xl font-bold mb-4">
+              Powerful Features for Oromo Learners
+            </h2>
+            <p className="text-muted-foreground text-lg">
+              Everything you need to master Oromo writing and language skills
+            </p>
+          </div>
+
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
+            <Card>
+              <CardHeader>
+                <Edit className="h-8 w-8 text-accent mb-2" />
+                <CardTitle>Smart Writing Assistant</CardTitle>
+                <CardDescription>
+                  Get real-time feedback on letter duplication and word usage
+                  with contextual examples from authentic Oromo texts.
+                </CardDescription>
+              </CardHeader>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <BookOpen className="h-8 w-8 text-accent mb-2" />
+                <CardTitle>Interactive Quizzes</CardTitle>
+                <CardDescription>
+                  Practice with guided exercises and quizzes designed to improve
+                  your understanding of Oromo phonetics and spelling.
+                </CardDescription>
+              </CardHeader>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <TrendingUp className="h-8 w-8 text-accent mb-2" />
+                <CardTitle>Progress Tracking</CardTitle>
+                <CardDescription>
+                  Monitor your improvement with detailed analytics, completion
+                  rates, and personalized learning insights.
+                </CardDescription>
+              </CardHeader>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <Users className="h-8 w-8 text-accent mb-2" />
+                <CardTitle>Personal Corpus</CardTitle>
+                <CardDescription>
+                  Build your own collection of sentences and expand the learning
+                  database with your contributions.
+                </CardDescription>
+              </CardHeader>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <BookOpen className="h-8 w-8 text-accent mb-2" />
+                <CardTitle>Project Management</CardTitle>
+                <CardDescription>
+                  Organize your writing into projects, track completion, and
+                  export your finished work.
+                </CardDescription>
+              </CardHeader>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <Edit className="h-8 w-8 text-accent mb-2" />
+                <CardTitle>Dual Writing Modes</CardTitle>
+                <CardDescription>
+                  Choose between freestyle writing with assistance or guided
+                  sentence-by-sentence composition.
+                </CardDescription>
+              </CardHeader>
+            </Card>
+          </div>
+        </div>
+      </section>
+
+      {/* CTA Section */}
+      <section className="py-20 px-4 text-center">
+        <div className="container mx-auto max-w-2xl">
+          <h2 className="text-3xl font-bold mb-4">
+            Ready to Improve Your Oromo Writing?
+          </h2>
+          <p className="text-muted-foreground text-lg mb-8">
+            Join our community of learners and start your journey to mastering
+            Oromo language writing today.
+          </p>
+          <Button size="lg" asChild>
+            <Link href="/register">Create Your Free Account</Link>
+          </Button>
+        </div>
+      </section>
+
+      {/* Footer */}
+      <footer className="border-t py-8 px-4">
+        <div className="container mx-auto text-center text-muted-foreground">
+          <p>
+            &copy; 2024 Oromo Writing Assistant. Built with care for the Oromo
+            language community.
+          </p>
+        </div>
       </footer>
     </div>
   );

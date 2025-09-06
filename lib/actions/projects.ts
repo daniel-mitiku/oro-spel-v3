@@ -207,7 +207,7 @@ export async function deleteProject(projectId: string) {
  * READ all projects for the current user, including sentences and stats.
  */
 export async function getUserProjects(): Promise<{
-  error: string;
+  error?: string;
   projects: ProjectForDashboard[];
 }> {
   const user = await getCurrentUser();
@@ -235,10 +235,7 @@ export async function getUserProjects(): Promise<{
       })
     );
 
-    // Add revalidation for the dashboard page
-    revalidatePath("/dashboard");
-
-    return { projects: projectsWithStats as ProjectForDashboard[], error: "" };
+    return { projects: projectsWithStats as ProjectForDashboard[] };
   } catch (error) {
     console.error("Get user projects error:", error);
     return { projects: [], error: "Failed to fetch projects" };
