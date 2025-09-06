@@ -1,0 +1,180 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// Datasource has been updated to use MongoDB.
+datasource db {
+  provider = "mongodb"
+  url      = env("DATABASE_URL")
+  // url      = "mongodb+srv://diago:CnbAhamGnqXeb8qF@cluster0.zdxmf2n.mongodb.net/alloc?retryWrites=true&w=majority&appName=Cluster0"
+}
+
+model User {
+  // ID fields are updated to use MongoDB's native ObjectId.
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  email     String   @unique
+  password  String
+  name      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  projects            Project[]
+  personalCorpus      PersonalCorpus[]
+  quizSessions        QuizSession[]
+  analytics           UserAnalytics[]
+  PersonalCorpusIndex PersonalCorpusIndex[]
+
+  @@map("users")
+}
+
+model Project {
+  id          String        @id @default(auto()) @map("_id") @db.ObjectId
+  title       String
+  description String?
+  content     String        @default("")
+  mode        ProjectMode   @default(freestyle)
+  status      ProjectStatus @default(active)
+  wordCount   Int           @default(0)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  isEnforced  Boolean       @default(false)
+  enforcedAt  DateTime?
+
+  // Relations
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String @db.ObjectId
+
+  sentences      ProjectSentence[]
+  personalCorpus String[]
+
+  // Add the stats field as a JSON object
+  stats Json @default("{\"totalSentences\": 0, \"completeSentences\": 0, \"partialSentences\": 0, \"unknownWords\": 0, \"completionRate\": 0}")
+
+  sessions WritingSession[]
+
+  @@map("projects")
+}
+
+model ProjectSentence {
+  id        String         @id @default(auto()) @map("_id") @db.ObjectId
+  text      String
+  position  Int
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+  status    SentenceStatus @default(partial)
+
+  // Relations
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  projectId String  @db.ObjectId
+  analysis  Json? // Store analysis results for the sentence
+
+  @@map("project_sentences")
+}
+
+model PersonalCorpusIndex {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  baseWord    String
+  variants    String[]
+  sentenceIds String[]
+  createdAt   DateTime @default(now())
+
+  // Relations
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String @db.ObjectId
+
+  @@unique([userId, baseWord])
+  @@map("personal_corpus_indices")
+}
+
+model WritingSession {
+  id         String    @id @default(auto()) @map("_id") @db.ObjectId
+  startedAt  DateTime  @default(now())
+  endedAt    DateTime?
+  wordsAdded Int       @default(0)
+
+  // Relations
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  projectId String  @db.ObjectId
+
+  @@map("writing_sessions")
+}
+
+model PersonalCorpus {
+  id        String       @id @default(auto()) @map("_id") @db.ObjectId
+  sentence  String
+  words     String // JSON array of words
+  baseWords String // JSON array of base words (normalized)
+  source    CorpusSource @default(manual)
+  createdAt DateTime     @default(now())
+
+  // Relations
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String @db.ObjectId
+
+  @@map("personal_corpus")
+}
+
+model QuizSession {
+  id             String         @id @default(auto()) @map("_id") @db.ObjectId
+  score          Int            @default(0)
+  totalQuestions Int            @default(0)
+  correctAnswers Int            @default(0)
+  timeSpent      Int            @default(0) // in seconds
+  difficulty     QuizDifficulty @default(medium)
+  createdAt      DateTime       @default(now())
+
+  // Relations
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String @db.ObjectId
+
+  @@map("quiz_sessions")
+}
+
+model UserAnalytics {
+  id           String   @id @default(auto()) @map("_id") @db.ObjectId
+  date         DateTime @default(now())
+  wordsWritten Int      @default(0)
+  correctWords Int      @default(0)
+  variantWords Int      @default(0)
+  unknownWords Int      @default(0)
+  timeSpent    Int      @default(0) // in seconds
+
+  // Relations
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String @db.ObjectId
+
+  @@map("user_analytics")
+}
+
+enum ProjectMode {
+  freestyle
+  guided
+}
+
+enum ProjectStatus {
+  active
+  completed
+  archived
+}
+
+enum SentenceStatus {
+  partial
+  complete
+  error
+}
+
+enum CorpusSource {
+  manual
+  project
+  import
+}
+
+enum QuizDifficulty {
+  easy
+  medium
+  hard
+}
