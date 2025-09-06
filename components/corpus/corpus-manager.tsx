@@ -37,7 +37,7 @@ export function CorpusManager() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const fetchData = async () => {
+    const getData = async () => {
       setIsLoading(true);
       setError(null);
       const result = await getPersonalCorpusStatsAndData();
@@ -53,7 +53,7 @@ export function CorpusManager() {
       setIsLoading(false);
     };
 
-    fetchData();
+    getData();
   }, []);
 
   const renderContent = () => {

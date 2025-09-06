@@ -17,7 +17,7 @@ export default async function ProjectPage({
   const { project, error } = await getProjectById(params.id);
 
   if (error || !project) {
-    console.error("Error fetching project:", error);
+    console.error("Error Getting project:", error);
     redirect("/dashboard");
   }
 

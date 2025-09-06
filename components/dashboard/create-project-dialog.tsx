@@ -1,9 +1,9 @@
-"use client"
+"use client";
 
-import type React from "react"
+import type React from "react";
 
-import { useState } from "react"
-import { Button } from "@/components/ui/button"
+import { useState } from "react";
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -12,51 +12,46 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from "@/components/ui/dialog"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
-import { Plus, Loader2 } from "lucide-react"
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Plus, Loader2 } from "lucide-react";
+import { createProject } from "@/lib/actions/projects";
 
 interface CreateProjectDialogProps {
-  onProjectCreated: () => void
+  onProjectCreated: () => void;
 }
 
-export function CreateProjectDialog({ onProjectCreated }: CreateProjectDialogProps) {
-  const [open, setOpen] = useState(false)
-  const [title, setTitle] = useState("")
-  const [description, setDescription] = useState("")
-  const [isLoading, setIsLoading] = useState(false)
+export function CreateProjectDialog({
+  onProjectCreated,
+}: CreateProjectDialogProps) {
+  const [open, setOpen] = useState(false);
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!title.trim()) return
+    e.preventDefault();
+    if (!title.trim()) return;
 
-    setIsLoading(true)
+    setIsLoading(true);
     try {
-      const response = await fetch("/api/protected/projects", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          title: title.trim(),
-          description: description.trim(),
-        }),
-      })
-
-      if (response.ok) {
-        setTitle("")
-        setDescription("")
-        setOpen(false)
-        onProjectCreated()
+      const result = await createProject(title.trim(), description.trim());
+      if (result && "project" in result && result.project) {
+        setTitle("");
+        setDescription("");
+        setOpen(false);
+        onProjectCreated();
+      } else if (result && "error" in result && result.error) {
+        console.error("Failed to create project:", result.error);
       }
     } catch (error) {
-      console.error("Failed to create project:", error)
+      console.error("Failed to create project:", error);
     } finally {
-      setIsLoading(false)
+      setIsLoading(false);
     }
-  }
+  };
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -71,7 +66,8 @@ export function CreateProjectDialog({ onProjectCreated }: CreateProjectDialogPro
           <DialogHeader>
             <DialogTitle>Create New Project</DialogTitle>
             <DialogDescription>
-              Start a new Oromo writing project. You can add sentences and track your progress.
+              Start a new Oromo writing project. You can add sentences and track
+              your progress.
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
@@ -99,7 +95,12 @@ export function CreateProjectDialog({ onProjectCreated }: CreateProjectDialogPro
             </div>
           </div>
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setOpen(false)} disabled={isLoading}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setOpen(false)}
+              disabled={isLoading}
+            >
               Cancel
             </Button>
             <Button type="submit" disabled={!title.trim() || isLoading}>
@@ -110,5 +111,5 @@ export function CreateProjectDialog({ onProjectCreated }: CreateProjectDialogPro
         </form>
       </DialogContent>
     </Dialog>
-  )
+  );
 }

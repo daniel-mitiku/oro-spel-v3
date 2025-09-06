@@ -8,6 +8,7 @@ import { BookOpen, FileText, CheckCircle, TrendingUp } from "lucide-react";
 // Import the new ProjectForDashboard type and alias it as Project
 import type { ProjectForDashboard as Project } from "@/lib/types";
 import { User } from "@prisma/client";
+import { getUserProjects, deleteProject } from "@/lib/actions/projects";
 
 interface DashboardContentProps {
   user: Omit<User, "password">;
@@ -22,10 +23,11 @@ export function DashboardContent({
 
   const refreshProjects = async () => {
     try {
-      const response = await fetch("/api/protected/projects");
-      if (response.ok) {
-        const data = await response.json();
-        setProjects(data.projects);
+      const result = await getUserProjects();
+      if (result && result.projects) {
+        setProjects(result.projects);
+      } else if (result && result.error) {
+        console.error("Failed to refresh projects:", result.error);
       }
     } catch (error) {
       console.error("Failed to refresh projects:", error);
@@ -34,13 +36,11 @@ export function DashboardContent({
 
   const handleDeleteProject = async (projectId: string) => {
     try {
-      const response = await fetch(`/api/protected/projects/${projectId}`, {
-        method: "DELETE",
-      });
-
-      if (response.ok) {
-        // Use project.id for filtering
+      const result = await deleteProject(projectId);
+      if (result && "success" in result && result.success) {
         setProjects((prev) => prev.filter((p) => p.id !== projectId));
+      } else if (result && "error" in result && result.error) {
+        console.error("Failed to delete project:", result.error);
       }
     } catch (error) {
       console.error("Failed to delete project:", error);

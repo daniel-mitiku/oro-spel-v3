@@ -118,7 +118,7 @@ export async function getProjectsForDashboard() {
     return { projects: projectsWithStats };
   } catch (error) {
     console.error("Get projects error:", error);
-    return { error: "Failed to fetch projects" };
+    return { error: "Failed to Get projects" };
   }
 }
 
@@ -149,7 +149,7 @@ export async function getProjectById(projectId: string) {
     return { project: projectWithStats };
   } catch (error) {
     console.error("Get project error:", error);
-    return { error: "Failed to fetch project" };
+    return { error: "Failed to Get project" };
   }
 }
 
@@ -159,7 +159,7 @@ export async function getProjectById(projectId: string) {
 export async function updateProject(
   projectId: string,
   data: { title?: string; description?: string }
-) {
+): Promise<{ error?: string } | { project: ProjectForDashboard }> {
   const user = await getCurrentUser();
   if (!user) {
     return { error: "Unauthorized" };
@@ -172,10 +172,19 @@ export async function updateProject(
         title: data.title,
         description: data.description,
       },
+      include: {
+        sentences: true,
+      },
     });
+
+    const updateProjectWithStats = {
+      ...updatedProject,
+      stats: await calculateProjectStats(updatedProject.id),
+    };
+
     revalidatePath("/dashboard");
     revalidatePath(`/projects/${projectId}`);
-    return { project: updatedProject };
+    return { project: updateProjectWithStats };
   } catch (error) {
     console.error("Update project error:", error);
     return { error: "Failed to update project" };
@@ -238,6 +247,56 @@ export async function getUserProjects(): Promise<{
     return { projects: projectsWithStats as ProjectForDashboard[] };
   } catch (error) {
     console.error("Get user projects error:", error);
-    return { projects: [], error: "Failed to fetch projects" };
+    return { projects: [], error: "Failed to get projects" };
+  }
+}
+
+export async function exportProjectData(projectId: string, format: string) {
+  const user = await getCurrentUser();
+  if (!user) {
+    return { error: "Unauthorized" };
+  }
+
+  try {
+    const project = await prisma.project.findFirst({
+      where: { id: projectId, userId: user.id },
+      include: { sentences: true },
+    });
+    if (!project) return { error: "Project not found" };
+
+    let content: string;
+    let mime = "text/plain";
+    let ext = "txt";
+
+    if (format === "json") {
+      content = JSON.stringify(project, null, 2);
+      mime = "application/json";
+      ext = "json";
+    } else if (format === "csv") {
+      // Simple CSV export: id,text,status
+      const header = "id,text,status";
+      const rows = project.sentences
+        .map((s) => `${s.id},"${s.text.replace(/"/g, '""')}",${s.status ?? ""}`)
+        .join("\n");
+      content = `${header}\n${rows}`;
+      mime = "text/csv";
+      ext = "csv";
+    } else {
+      // Plain text: just sentences
+      content = project.sentences.map((s) => s.text).join("\n");
+      mime = "text/plain";
+      ext = "txt";
+    }
+
+    return {
+      content,
+      mime,
+      filename: `${project.title
+        .replace(/[^a-z0-9]/gi, "_")
+        .toLowerCase()}.${ext}`,
+    };
+  } catch (error) {
+    console.error("Export project error:", error);
+    return { error: "Failed to export project" };
   }
 }

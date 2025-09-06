@@ -1,6 +1,8 @@
 "use client";
 
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useTransition } from "react";
+// Import your server actions
+import { analyzeSentence, getSuggestions } from "@/lib/actions/corpus";
 import {
   Card,
   CardContent,
@@ -23,24 +25,20 @@ import {
   Lightbulb,
   FileText,
   Eye,
+  Loader2,
 } from "lucide-react";
-import type { WordAnalysis, ProjectForDashboard } from "@/lib/types";
+import type {
+  WordAnalysis,
+  ProjectForDashboard,
+  SuggestionResult,
+} from "@/lib/types";
 
 interface AdvancedWritingAssistantProps {
   project: ProjectForDashboard;
-  onProjectUpdate: (updates: Partial<ProjectForDashboard>) => void;
-  mode: "textarea" | "guided";
-}
-
-interface SuggestionResult {
-  suggestions: string[] | { sentence: string; overlap: number }[];
-  type: "single" | "overlap";
 }
 
 export function AdvancedWritingAssistant({
   project,
-  onProjectUpdate,
-  mode,
 }: AdvancedWritingAssistantProps) {
   const [text, setText] = useState(
     project.sentences.map((s) => s.text).join("\n")
@@ -49,94 +47,58 @@ export function AdvancedWritingAssistant({
   const [wordAnalyses, setWordAnalyses] = useState<WordAnalysis[]>([]);
   const [suggestions, setSuggestions] = useState<SuggestionResult | null>(null);
   const [activeWord, setActiveWord] = useState<string>("");
-  const [isLoading, setIsLoading] = useState(false);
+  const [isPending, startTransition] = useTransition(); // Use transition for non-blocking UI updates
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  const analyzeCurrentLine = useCallback(
-    async (lineText: string) => {
-      if (!lineText.trim()) {
-        setWordAnalyses([]);
-        return;
+  const analyzeCurrentLine = useCallback(async (lineText: string) => {
+    if (!lineText.trim()) {
+      setWordAnalyses([]);
+      return;
+    }
+
+    startTransition(async () => {
+      const result = await analyzeSentence(lineText);
+      if (result && !result.error && result.wordAnalyses) {
+        setWordAnalyses(result.wordAnalyses);
+      } else {
+        console.error("Analysis failed:", result.error);
       }
+    });
+  }, []);
 
-      setIsLoading(true);
-      try {
-        const response = await fetch("/api/protected/corpus/analyze", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            sentence: lineText,
-            projectId: project.id,
-          }),
-        });
-
-        if (response.ok) {
-          const data = await response.json();
-          setWordAnalyses(data.wordAnalyses);
-        }
-      } catch (error) {
-        console.error("Failed to analyze sentence:", error);
-      } finally {
-        setIsLoading(false);
-      }
-    },
-    [project.id]
-  );
-
-  const fetchSuggestions = useCallback(
-    async (
-      words: string[],
-      suggestionMode: "single" | "overlap" = "single"
-    ) => {
-      if (!words.length) return;
-
-      setIsLoading(true);
-      try {
-        const response = await fetch("/api/protected/corpus/suggestions", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            words,
-            mode: suggestionMode,
-          }),
-        });
-
-        if (response.ok) {
-          const data = await response.json();
-          setSuggestions(data);
-        }
-      } catch (error) {
-        console.error("Failed to fetch suggestions:", error);
-      } finally {
-        setIsLoading(false);
-      }
-    },
-    []
-  );
-
-  const handleTextChange = (newText: string) => {
+  const handleTextChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const newText = e.target.value;
     setText(newText);
 
-    if (textareaRef.current) {
-      const cursorPosition = textareaRef.current.selectionStart;
-      const lines = newText.substring(0, cursorPosition).split("\n");
-      const currentLineIndex = lines.length - 1;
-      const currentLineText = lines[currentLineIndex];
+    // Debounce analysis
+    setTimeout(() => {
+      if (textareaRef.current) {
+        const cursorPosition = textareaRef.current.selectionStart;
+        const textUpToCursor = newText.substring(0, cursorPosition);
+        const lines = textUpToCursor.split("\n");
+        const currentLineIndex = lines.length - 1;
+        const currentLineText = newText.split("\n")[currentLineIndex];
 
-      setCurrentLine(currentLineIndex);
-
-      // Debounce analysis
-      const timeoutId = setTimeout(() => {
+        setCurrentLine(currentLineIndex);
         analyzeCurrentLine(currentLineText);
-      }, 500);
-
-      return () => clearTimeout(timeoutId);
-    }
+      }
+    }, 500); // 500ms debounce
   };
 
   const handleWordClick = (word: string) => {
     setActiveWord(word);
-    fetchSuggestions([word], "single");
+    startTransition(async () => {
+      const result = await getSuggestions({ words: [word], mode: "single" });
+      if (result && "suggestions" in result) {
+        setSuggestions(result);
+      } else {
+        // Handle the error case, for example, by setting suggestions to null
+        // and maybe showing a user notification.
+        setSuggestions(null);
+        // Optional: Add logic to display an error message to the user.
+        console.error("Failed to get suggestions:", result.error);
+      }
+    });
   };
 
   const handleContextAnalysis = () => {
@@ -144,11 +106,17 @@ export function AdvancedWritingAssistant({
     const currentLineText = lines[currentLine];
     if (currentLineText) {
       const words = currentLineText.split(/\s+/).filter(Boolean);
-      fetchSuggestions(words, "overlap");
+      startTransition(async () => {
+        const result = await getSuggestions({ words, mode: "overlap" });
+        if (result && "suggestions" in result) {
+          setSuggestions(result);
+        }
+      });
     }
   };
 
   const handleExport = () => {
+    // This logic remains the same as it's client-side
     const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
@@ -161,6 +129,9 @@ export function AdvancedWritingAssistant({
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
   };
+
+  // The rest of your component (getWordStatusColor, getStatusIcon, JSX) remains largely the same.
+  // Just update the loading state to use `isPending` from `useTransition`.
 
   const getWordStatusColor = (status: "correct" | "variant" | "unknown") => {
     switch (status) {
@@ -190,26 +161,26 @@ export function AdvancedWritingAssistant({
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-full">
       {/* Main Writing Area */}
       <div className="lg:col-span-2 space-y-4">
-        <Card className="h-full">
+        <Card className="h-full flex flex-col">
           <CardHeader>
             <div className="flex items-center justify-between">
               <div>
-                <CardTitle className="text-xl">
-                  {mode === "textarea" ? "Freestyle Writing" : "Guided Writing"}
-                </CardTitle>
+                <CardTitle className="text-xl">Writing Pad</CardTitle>
                 <CardDescription>
-                  {mode === "textarea"
-                    ? "Write freely with real-time assistance"
-                    : "Focus on one sentence at a time"}
+                  Write freely with real-time assistance on the current line.
                 </CardDescription>
               </div>
               <div className="flex gap-2">
                 <Button
                   variant="outline"
                   onClick={handleContextAnalysis}
-                  disabled={isLoading}
+                  disabled={isPending}
                 >
-                  <Search className="mr-2 h-4 w-4" />
+                  {isPending ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <Search className="mr-2 h-4 w-4" />
+                  )}
                   Analyze Context
                 </Button>
                 <Button
@@ -223,16 +194,16 @@ export function AdvancedWritingAssistant({
               </div>
             </div>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="space-y-4 flex-grow flex flex-col">
             <Textarea
               ref={textareaRef}
               value={text}
-              onChange={(e) => handleTextChange(e.target.value)}
+              onChange={handleTextChange}
+              onSelect={handleTextChange} // Re-analyze on selection change in a line
               placeholder="Barreessuu jalqabi... (Start writing...)"
-              className="min-h-[400px] text-lg leading-relaxed"
+              className="flex-grow text-lg leading-relaxed"
             />
 
-            {/* Current Line Analysis */}
             {wordAnalyses.length > 0 && (
               <Card className="bg-muted/50">
                 <CardHeader className="pb-3">
@@ -276,25 +247,23 @@ export function AdvancedWritingAssistant({
             <Tabs defaultValue="suggestions" className="h-full">
               <TabsList className="grid w-full grid-cols-2">
                 <TabsTrigger value="suggestions">Suggestions</TabsTrigger>
-                <TabsTrigger value="analysis">Analysis</TabsTrigger>
+                <TabsTrigger value="analysis">Analysis Details</TabsTrigger>
               </TabsList>
 
               <TabsContent value="suggestions" className="mt-4">
                 <ScrollArea className="h-[400px]">
-                  {isLoading ? (
+                  {isPending ? (
                     <div className="flex items-center justify-center h-32">
-                      <p className="text-muted-foreground">
-                        Loading suggestions...
-                      </p>
+                      <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
                     </div>
-                  ) : suggestions ? (
+                  ) : suggestions && suggestions.suggestions.length > 0 ? (
                     <div className="space-y-4">
                       <div className="flex items-center gap-2">
                         <FileText className="h-4 w-4" />
                         <span className="font-medium">
                           {suggestions.type === "single"
                             ? `Examples for "${activeWord}"`
-                            : "Similar Sentences"}
+                            : "Similar Sentences (High Overlap)"}
                         </span>
                       </div>
                       <Separator />
@@ -310,12 +279,10 @@ export function AdvancedWritingAssistant({
                                 key={index}
                                 className="p-3 bg-muted/50 rounded-lg"
                               >
-                                <div className="flex items-center gap-2 mb-1">
-                                  <Badge variant="secondary">
-                                    {item.overlap} matches
-                                  </Badge>
-                                </div>
-                                <p className="text-sm italic">
+                                <Badge variant="secondary">
+                                  {item.overlap} matches
+                                </Badge>
+                                <p className="text-sm italic mt-1">
                                   {item.sentence}
                                 </p>
                               </div>
@@ -336,8 +303,8 @@ export function AdvancedWritingAssistant({
                     <div className="flex flex-col items-center justify-center h-32 text-center">
                       <Eye className="h-8 w-8 text-muted-foreground mb-2" />
                       <p className="text-muted-foreground text-sm">
-                        Click on a word or use "Analyze Context" to see
-                        suggestions
+                        Click on a colored word or use "Analyze Context" to see
+                        suggestions.
                       </p>
                     </div>
                   )}
@@ -345,50 +312,13 @@ export function AdvancedWritingAssistant({
               </TabsContent>
 
               <TabsContent value="analysis" className="mt-4">
-                <ScrollArea className="h-[400px]">
-                  {wordAnalyses.length > 0 ? (
-                    <div className="space-y-3">
-                      {wordAnalyses.map((analysis, index) => (
-                        <Card key={index} className="p-3">
-                          <div className="flex items-center justify-between mb-2">
-                            <span className="font-medium">{analysis.word}</span>
-                            <Badge
-                              variant="outline"
-                              className={getWordStatusColor(analysis.status)}
-                            >
-                              {analysis.status}
-                            </Badge>
-                          </div>
-                          {analysis.suggestions.length > 0 && (
-                            <div className="space-y-1">
-                              <p className="text-xs text-muted-foreground">
-                                Suggestions:
-                              </p>
-                              <div className="flex flex-wrap gap-1">
-                                {analysis.suggestions.map((suggestion, i) => (
-                                  <Badge
-                                    key={i}
-                                    variant="secondary"
-                                    className="text-xs"
-                                  >
-                                    {suggestion}
-                                  </Badge>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-                        </Card>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="flex flex-col items-center justify-center h-32 text-center">
-                      <FileText className="h-8 w-8 text-muted-foreground mb-2" />
-                      <p className="text-muted-foreground text-sm">
-                        Start typing to see word analysis
-                      </p>
-                    </div>
-                  )}
-                </ScrollArea>
+                {/* This tab can show more detailed analysis if needed in the future */}
+                <div className="flex flex-col items-center justify-center h-32 text-center">
+                  <FileText className="h-8 w-8 text-muted-foreground mb-2" />
+                  <p className="text-muted-foreground text-sm">
+                    Detailed word analysis will appear here.
+                  </p>
+                </div>
               </TabsContent>
             </Tabs>
           </CardContent>

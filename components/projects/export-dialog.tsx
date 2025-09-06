@@ -23,6 +23,7 @@ import {
   Loader2,
 } from "lucide-react";
 import type { ProjectForDashboard } from "@/lib/types";
+import { exportProjectData } from "@/lib/actions/projects";
 
 interface ExportDialogProps {
   project: ProjectForDashboard;
@@ -37,31 +38,20 @@ export function ExportDialog({ project, trigger }: ExportDialogProps) {
   const handleExport = async () => {
     setIsExporting(true);
     try {
-      const response = await fetch(
-        `/api/protected/export/project/${project.id}?format=${format}`
-      );
-
-      if (response.ok) {
-        const blob = await response.blob();
+      const result = await exportProjectData(project.id, format);
+      if (result && !result.error && result.content) {
+        const blob = new Blob([result.content], { type: result.mime });
         const url = URL.createObjectURL(blob);
         const link = document.createElement("a");
         link.href = url;
-
-        // Get filename from Content-Disposition header or create one
-        const contentDisposition = response.headers.get("Content-Disposition");
-        const filename = contentDisposition
-          ? contentDisposition.split("filename=")[1]?.replace(/"/g, "")
-          : `${project.title
-              .replace(/[^a-z0-9]/gi, "_")
-              .toLowerCase()}.${format}`;
-
-        link.download = filename;
+        link.download = result.filename;
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
         URL.revokeObjectURL(url);
-
         setOpen(false);
+      } else if (result && result.error) {
+        console.error("Export failed:", result.error);
       }
     } catch (error) {
       console.error("Export failed:", error);

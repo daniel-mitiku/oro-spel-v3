@@ -13,7 +13,7 @@ export default async function DashboardPage() {
   const { projects, error } = await getUserProjects();
 
   if (error || !projects) {
-    console.error("Error fetching project:", error);
+    console.error("Error Getting project:", error);
     redirect("/dashboard");
   }
 

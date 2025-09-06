@@ -22,6 +22,7 @@ import {
   BarChart3,
 } from "lucide-react";
 import { ModeToggle } from "../shared/toggle-mode";
+import { logoutUser } from "@/lib/actions/auth";
 
 interface NavbarProps {
   user?: {
@@ -37,9 +38,8 @@ export function Navbar({ user }: NavbarProps) {
   const handleLogout = async () => {
     setIsLoggingOut(true);
     try {
-      await fetch("/api/auth/logout", { method: "POST" });
-      router.push("/login");
-      router.refresh();
+      await logoutUser();
+      // No need to manually push/refresh, as logoutUser redirects to /login
     } catch (error) {
       console.error("Logout failed:", error);
     } finally {

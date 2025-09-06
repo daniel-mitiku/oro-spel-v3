@@ -1,20 +1,26 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "./auth";
 import fs from "fs/promises";
 import path from "path";
-import { PersonalCorpusIndexData, WordAnalysis } from "../types";
-import { getBaseWord } from "../utils";
+import type {
+  WordAnalysis,
+  SuggestionResult,
+  PersonalCorpusIndexData,
+} from "@/lib/types";
+import { getBaseWord } from "@/lib/utils";
+import { revalidatePath } from "next/cache";
+
+// --- HELPER FUNCTIONS ---
 
 /**
- * Helper function to read the global corpus index from the pre-processed JSON files.
+ * Helper to fetch data from a global index JSON file.
+ * This is the logic from your pre-processing script's output.
  */
-async function getGlobalCorpusIndex(
+async function getGlobalIndexData(
   baseWord: string
-): Promise<{ variants: string[]; sentenceIds: number[] } | null> {
-  // Determine the correct JSON file to read based on the first character of the base word.
+): Promise<{ sentenceIds: number[] } | null> {
   let firstChar = baseWord[0] || "other";
   if (!/^[a-z]/.test(firstChar)) {
     firstChar = "other";
@@ -29,74 +35,136 @@ async function getGlobalCorpusIndex(
   try {
     const fileContent = await fs.readFile(filePath, "utf-8");
     const indexData = JSON.parse(fileContent);
-    // Return the entry for the base word, or null if not found.
-    return indexData[baseWord] || null;
+    return indexData[baseWord] ? { sentenceIds: indexData[baseWord] } : null;
   } catch (error) {
-    // Log an error if the file can't be read, but don't block the analysis.
-    console.error(`Failed to read global corpus index for ${baseWord}:`, error);
+    // It's okay if a file doesn't exist, just means no data for that letter.
+    if (
+      typeof error === "object" &&
+      error !== null &&
+      "code" in error &&
+      (error as any).code !== "ENOENT"
+    ) {
+      console.error(`Failed to read global index for ${baseWord}:`, error);
+    }
     return null;
   }
 }
 
 /**
- * Analyzes a sentence word by word against the global and personal corpora.
+ * Helper to fetch sentences from the chunked JSON files by their IDs.
  */
-export async function analyzeSentence(sentence: string, projectId: string) {
-  const user = await getCurrentUser();
-  if (!user) {
-    return { error: "Unauthorized" };
-  }
+async function getSentencesByIds(sentenceIds: number[]): Promise<string[]> {
+  if (sentenceIds.length === 0) return [];
 
-  if (!sentence || !projectId) {
-    return { error: "Missing sentence or projectId" };
-  }
+  // This assumes you have metadata about the chunks
+  const metaPath = path.join(process.cwd(), "public", "data", "metadata.json");
+  const meta = JSON.parse(await fs.readFile(metaPath, "utf-8"));
+  const { sentenceChunkSize } = meta;
+
+  const sentencesMap = new Map<number, string>();
+  const requiredChunks = new Set<number>();
+  sentenceIds.forEach((id) =>
+    requiredChunks.add(Math.floor(id / sentenceChunkSize))
+  );
+
+  await Promise.all(
+    Array.from(requiredChunks).map(async (chunkId) => {
+      try {
+        const chunkPath = path.join(
+          process.cwd(),
+          "public",
+          "data",
+          `sentences_${chunkId}.json`
+        );
+        const chunkContent = await fs.readFile(chunkPath, "utf-8");
+        const sentencesInChunk: string[] = JSON.parse(chunkContent);
+
+        // Add relevant sentences from this chunk to our map
+        sentenceIds.forEach((id) => {
+          if (Math.floor(id / sentenceChunkSize) === chunkId) {
+            const indexInChunk = id % sentenceChunkSize;
+            if (sentencesInChunk[indexInChunk]) {
+              sentencesMap.set(id, sentencesInChunk[indexInChunk]);
+            }
+          }
+        });
+      } catch (error) {
+        console.error(`Could not load sentence chunk ${chunkId}:`, error);
+      }
+    })
+  );
+
+  // Return sentences in the order of the original IDs
+  return sentenceIds
+    .map((id) => sentencesMap.get(id))
+    .filter(Boolean) as string[];
+}
+
+// --- SERVER ACTIONS ---
+
+/**
+ * MODIFIED: Analyzes a sentence against BOTH the global and personal corpora.
+ */
+export async function analyzeSentence(sentence: string) {
+  const user = await getCurrentUser();
+  if (!user) return { error: "Unauthorized" };
+  if (!sentence) return { error: "Missing sentence" };
 
   try {
     const words = sentence.split(/\s+/).filter(Boolean);
     const wordAnalyses: WordAnalysis[] = [];
 
     for (let i = 0; i < words.length; i++) {
-      const word = words[i];
+      const word = words[i].replace(/[.,\/#!$%\^&\*;:{}=\-_`~()?]/g, "");
+      if (!word) continue;
+
       const baseWord = getBaseWord(word);
 
-      // 1. Find in global corpus (from JSON files)
-      const globalIndex = await getGlobalCorpusIndex(baseWord);
+      // 1. Query Global Corpus (JSON files)
+      const globalIndex = await getGlobalIndexData(baseWord);
 
-      // 2. Find in personal corpus (from database)
+      // 2. Query Personal Corpus (Database)
       const personalIndex = await prisma.personalCorpusIndex.findFirst({
-        where: {
-          baseWord,
-          userId: user.id,
-        },
+        where: { baseWord, userId: user.id },
       });
 
       let status: "correct" | "variant" | "unknown" = "unknown";
-      let suggestions: string[] = [];
 
-      // Combine variants from both sources
-      const allVariants = [
-        ...(globalIndex?.variants || []),
-        ...(personalIndex?.variants || []),
+      // We need the actual sentences to check for exact variant matches
+      const globalSentenceIds = globalIndex?.sentenceIds.slice(0, 20) || [];
+      const globalSentences = await getSentencesByIds(globalSentenceIds);
+
+      const personalSentenceIds = personalIndex?.sentenceIds.slice(0, 20) || [];
+      const personalSentences = (
+        await prisma.personalCorpus.findMany({
+          where: { id: { in: personalSentenceIds } },
+        })
+      ).map((s) => s.sentence);
+
+      const allSentences = [
+        ...new Set([...globalSentences, ...personalSentences]),
       ];
 
-      if (allVariants.length > 0) {
-        if (allVariants.includes(word)) {
-          // The exact word is found in the combined variants
-          status = "correct";
+      if (allSentences.length > 0) {
+        // Check if the exact typed word exists in any of the found sentences
+        const exactMatchFound = allSentences.some((s) =>
+          s.split(/\s+/).includes(word)
+        );
+
+        if (exactMatchFound) {
+          status = "correct"; // Green
         } else {
-          // The base word exists, but this specific form is not recorded
-          status = "variant";
-          // Provide suggestions from the combined list, removing duplicates
-          suggestions = [...new Set(allVariants)].slice(0, 5);
+          status = "variant"; // Yellow
         }
+      } else {
+        status = "unknown"; // Red
       }
-      // If the base word is not in either corpus, status remains "unknown"
 
       wordAnalyses.push({
         word,
         baseWord,
         status,
-        suggestions,
+        suggestions: [],
         position: i,
       });
     }
@@ -105,6 +173,83 @@ export async function analyzeSentence(sentence: string, projectId: string) {
   } catch (error) {
     console.error("Analyze sentence error:", error);
     return { error: "Analysis failed" };
+  }
+}
+
+/**
+ * NEW: Gets suggestions based on single word or multi-word context (overlap).
+ */
+export async function getSuggestions({
+  words,
+  mode,
+}: {
+  words: string[];
+  mode: "single" | "overlap";
+}): Promise<SuggestionResult | { error: string }> {
+  const user = await getCurrentUser();
+  if (!user) return { error: "Unauthorized" };
+
+  try {
+    const baseWords = words.map(getBaseWord).filter(Boolean);
+    if (baseWords.length === 0) return { type: mode, suggestions: [] };
+
+    if (mode === "single") {
+      const baseWord = baseWords[0];
+      const globalIndex = await getGlobalIndexData(baseWord);
+      const personalIndex = await prisma.personalCorpusIndex.findFirst({
+        where: { baseWord, userId: user.id },
+      });
+
+      const globalIds = globalIndex?.sentenceIds.slice(0, 10) || [];
+      const personalIds = personalIndex?.sentenceIds.slice(0, 10) || [];
+
+      const globalSentences = await getSentencesByIds(globalIds);
+      const personalSentences = (
+        await prisma.personalCorpus.findMany({
+          where: { id: { in: personalIds } },
+        })
+      ).map((s) => s.sentence);
+
+      const suggestions = [
+        ...new Set([...globalSentences, ...personalSentences]),
+      ];
+      return { type: "single", suggestions };
+    }
+
+    if (mode === "overlap") {
+      const overlapMap = new Map<number, number>(); // Global sentences (ID -> count)
+
+      // 1. Get all sentence IDs from global corpus for each base word
+      for (const baseWord of baseWords) {
+        const globalIndex = await getGlobalIndexData(baseWord);
+        globalIndex?.sentenceIds.forEach((id) => {
+          overlapMap.set(id, (overlapMap.get(id) || 0) + 1);
+        });
+      }
+
+      // 2. Sort by overlap count and take top 10
+      const sorted = Array.from(overlapMap.entries())
+        .filter(([, count]) => count > 1) // Only show sentences with more than 1 word match
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 10);
+
+      const sentenceIds = sorted.map(([id]) => id);
+      const sentences = await getSentencesByIds(sentenceIds);
+
+      const suggestions = sorted
+        .map(([id, overlap], index) => ({
+          sentence: sentences[index],
+          overlap,
+        }))
+        .filter((s) => s.sentence); // Filter out any that failed to fetch
+
+      return { type: "overlap", suggestions };
+    }
+
+    return { type: mode, suggestions: [] };
+  } catch (error) {
+    console.error("Get suggestions error:", error);
+    return { error: "Failed to get suggestions" };
   }
 }
 
@@ -253,7 +398,7 @@ export async function getPersonalCorpusStatsAndData() {
         orderBy: { createdAt: "desc" },
       });
 
-    // Calculate statistics based on the fetched data
+    // Calculate statistics based on the gotten data
     const stats = corpusData.reduce(
       (acc, entry) => {
         acc.totalVariants += entry.variants.length;
@@ -270,6 +415,6 @@ export async function getPersonalCorpusStatsAndData() {
     return { corpusData, stats };
   } catch (error) {
     console.error("Get personal corpus error:", error);
-    return { error: "Failed to fetch personal corpus data" };
+    return { error: "Failed to Get personal corpus data" };
   }
 }

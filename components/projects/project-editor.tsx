@@ -16,6 +16,7 @@ import { AdvancedWritingAssistant } from "@/components/writing/advanced-writing-
 import { QuizGame } from "@/components/writing/quiz-game";
 import { ArrowLeft, Edit, BookOpen, BarChart3 } from "lucide-react";
 import type { ProjectForDashboard } from "@/lib/types";
+import { updateProject } from "@/lib/actions/projects";
 
 interface ProjectEditorProps {
   project: ProjectForDashboard;
@@ -28,15 +29,33 @@ export function ProjectEditor({ project: initialProject }: ProjectEditorProps) {
 
   const handleProjectUpdate = async (updates: Partial<ProjectForDashboard>) => {
     try {
-      const response = await fetch(`/api/protected/projects/${project.id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(updates),
-      });
+      // Only send fields that are actually provided and changed
+      const payload: { title?: string; description?: string } = {};
+      if (
+        typeof updates.title === "string" &&
+        updates.title !== project.title
+      ) {
+        payload.title = updates.title.trim();
+      }
+      if (
+        typeof updates.description === "string" &&
+        updates.description !== project.description
+      ) {
+        payload.description =
+          updates.description.trim() === ""
+            ? undefined
+            : updates.description.trim();
+      }
 
-      if (response.ok) {
-        const data = await response.json();
-        setProject(data.project);
+      // If nothing to update, skip
+      if (Object.keys(payload).length === 0) return;
+
+      const result = await updateProject(project.id, payload);
+
+      if (result && "project" in result && result.project) {
+        setProject(result.project);
+      } else if (result && "error" in result && result.error) {
+        console.error("Failed to update project:", result.error);
       }
     } catch (error) {
       console.error("Failed to update project:", error);
@@ -156,8 +175,8 @@ export function ProjectEditor({ project: initialProject }: ProjectEditorProps) {
 
           <AdvancedWritingAssistant
             project={project}
-            onProjectUpdate={handleProjectUpdate}
-            mode={mode}
+            //onProjectUpdate={handleProjectUpdate}
+            //mode={mode}
           />
         </TabsContent>
 

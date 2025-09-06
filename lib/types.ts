@@ -39,5 +39,71 @@ export type ProjectForDashboard = ProjectWithSentences & {
   stats: ProjectStats;
 };
 
+// The type for the result of a suggestion fetch.
+export type SuggestionResult = {
+  type: "single" | "overlap";
+  suggestions: string[] | { sentence: string; overlap: number }[];
+  // error?: string;
+};
+
 // Define the type for the payload to ensure consistency
 export type PersonalCorpusIndexData = Prisma.PersonalCorpusIndexGetPayload<{}>;
+
+// --- Analytics Dashboard Types ---
+
+export interface AnalyticsData {
+  overview: {
+    totalProjects: number;
+    completedProjects: number;
+    totalSentences: number;
+    completeSentences: number;
+    partialSentences: number;
+    unknownWords: number;
+    personalCorpusWords: number;
+    personalCorpusVariants: number;
+    currentStreak: number;
+    longestStreak: number;
+    averageCompletion: number;
+  };
+  progressOverTime: Array<{
+    date: string;
+    completion: number;
+    projects: number;
+  }>;
+  projectBreakdown: Array<{
+    id: string;
+    title: string;
+    completionRate: number;
+    totalSentences: number;
+    completeSentences: number;
+    createdAt: string;
+    updatedAt: string;
+  }>;
+}
+
+export interface WordAnalysisData {
+  wordStats: Array<{
+    word: string;
+    correct: number;
+    variant: number;
+    unknown: number;
+    total: number;
+    accuracy: number;
+  }>;
+  topErrors: Array<{
+    error: string;
+    count: number;
+  }>;
+  improvementAreas: string[];
+  accuracyByProject: Array<{
+    projectId: string;
+    title: string;
+    accuracy: number;
+    totalWords: number;
+    correctWords: number;
+    createdAt: string;
+  }>;
+}
+
+// The combined type for the server action response
+export type FullAnalyticsData = AnalyticsData & WordAnalysisData; // & { error?: string };
