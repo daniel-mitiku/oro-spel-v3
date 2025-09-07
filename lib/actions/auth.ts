@@ -3,7 +3,7 @@
 import { cookies } from "next/headers";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
-import { generateToken, JWT_SECRET, verifyToken } from "@/lib/auth";
+import { generateToken, verifyToken } from "@/lib/auth";
 import { redirect } from "next/navigation";
 
 export async function registerUser(formData: FormData) {
@@ -41,10 +41,6 @@ export async function registerUser(formData: FormData) {
       },
     });
 
-    // Create JWT token
-    if (!JWT_SECRET) {
-      throw new Error("JWT_SECRET is not defined");
-    }
     const token = await generateToken(user.id);
 
     // Set cookie
