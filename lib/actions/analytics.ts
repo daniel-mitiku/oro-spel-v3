@@ -5,6 +5,48 @@ import { getCurrentUser } from "./auth";
 import type { FullAnalyticsData, ProjectStats } from "@/lib/types";
 
 /**
+ * NEW: Upserts a user's analytics for the current day.
+ * This is called by `updateProject` to log writing activity.
+ */
+export async function updateUserAnalytics(data: {
+  wordsWritten: number;
+  unknownWords: number;
+}) {
+  const user = await getCurrentUser();
+  if (!user) return;
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  try {
+    await prisma.userAnalytics.upsert({
+      where: {
+        userId_date: {
+          userId: user.id,
+          date: today,
+        },
+      },
+      update: {
+        wordsWritten: {
+          increment: data.wordsWritten,
+        },
+        unknownWords: {
+          increment: data.unknownWords,
+        },
+      },
+      create: {
+        userId: user.id,
+        date: today,
+        wordsWritten: data.wordsWritten,
+        unknownWords: data.unknownWords,
+      },
+    });
+  } catch (error) {
+    console.error("Failed to update user analytics:", error);
+  }
+}
+
+/**
  * Calculates the current and longest streaks from a sorted list of dates.
  */
 function calculateStreaks(dates: Date[]): {
@@ -19,7 +61,6 @@ function calculateStreaks(dates: Date[]): {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  // Use a Set for efficient date lookups
   const dateSet = new Set(
     dates.map((d) => {
       const date = new Date(d);
@@ -34,7 +75,6 @@ function calculateStreaks(dates: Date[]): {
     .sort((a, b) => a - b)
     .map((t) => new Date(t));
 
-  // Calculate longest streak
   let currentLongest = 1;
   longestStreak = 1;
   for (let i = 1; i < sortedUniqueDates.length; i++) {
@@ -50,8 +90,7 @@ function calculateStreaks(dates: Date[]): {
   }
   longestStreak = Math.max(longestStreak, currentLongest);
 
-  // Calculate current streak
-  let tempDate = new Date(today);
+  const tempDate = new Date(today);
   if (dateSet.has(tempDate.getTime())) {
     currentStreak = 1;
     tempDate.setDate(tempDate.getDate() - 1);
@@ -66,6 +105,7 @@ function calculateStreaks(dates: Date[]): {
 
 /**
  * Gathers and computes all analytics data for the user dashboard.
+ * This should now work correctly as project stats are pre-calculated.
  */
 export async function getUserAnalytics(): Promise<
   FullAnalyticsData | { error: string }
@@ -74,12 +114,10 @@ export async function getUserAnalytics(): Promise<
   if (!user) return { error: "Unauthorized" };
 
   try {
-    // 1. Fetch all necessary data in parallel
     const [projects, personalCorpusIndices, userAnalyticsEntries] =
       await Promise.all([
         prisma.project.findMany({
           where: { userId: user.id },
-          include: { sentences: true },
           orderBy: { updatedAt: "desc" },
         }),
         prisma.personalCorpusIndex.findMany({ where: { userId: user.id } }),
@@ -89,7 +127,6 @@ export async function getUserAnalytics(): Promise<
         }),
       ]);
 
-    // 2. Compute Overview Stats
     const overview = projects.reduce(
       (acc, project) => {
         const stats = project.stats as ProjectStats;
@@ -124,7 +161,7 @@ export async function getUserAnalytics(): Promise<
 
     const streaks = calculateStreaks(userAnalyticsEntries.map((e) => e.date));
 
-    // 3. Compute Progress Over Time (last 30 days)
+    // This logic remains the same and will now work with accurate data.
     const progressOverTimeMap = new Map<
       string,
       { completion: number[]; projects: Set<string> }
@@ -149,7 +186,6 @@ export async function getUserAnalytics(): Promise<
       }))
       .slice(-30);
 
-    // 4. Compute Project Breakdown
     const projectBreakdown = projects.map((p) => ({
       id: p.id,
       title: p.title,
@@ -159,14 +195,6 @@ export async function getUserAnalytics(): Promise<
       createdAt: p.createdAt.toISOString(),
       updatedAt: p.updatedAt.toISOString(),
     }));
-
-    // Placeholder for word analysis as it requires more data than available in schema
-    const wordAnalysisData = {
-      wordStats: [],
-      topErrors: [],
-      improvementAreas: [],
-      accuracyByProject: [],
-    };
 
     return {
       overview: {
@@ -184,7 +212,10 @@ export async function getUserAnalytics(): Promise<
       },
       progressOverTime,
       projectBreakdown,
-      ...wordAnalysisData,
+      wordStats: [],
+      topErrors: [],
+      improvementAreas: [],
+      accuracyByProject: [],
     };
   } catch (error) {
     console.error("Failed to get user analytics:", error);

@@ -39,15 +39,17 @@ export type ProjectForDashboard = ProjectWithSentences & {
   stats: ProjectStats;
 };
 
+export type Suggestions = string[] | { sentence: string; overlap: number }[];
 // The type for the result of a suggestion fetch.
 export type SuggestionResult = {
   type: "single" | "overlap";
-  suggestions: string[] | { sentence: string; overlap: number }[];
+  suggestions: Suggestions;
   // error?: string;
 };
 
 // Define the type for the payload to ensure consistency
-export type PersonalCorpusIndexData = Prisma.PersonalCorpusIndexGetPayload<{}>;
+export type PersonalCorpusIndexData =
+  Prisma.PersonalCorpusIndexGetPayload<object>;
 
 // --- Analytics Dashboard Types ---
 

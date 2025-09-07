@@ -95,7 +95,7 @@ export function ExportDialog({ project, trigger }: ExportDialogProps) {
         <DialogHeader>
           <DialogTitle>Export Project</DialogTitle>
           <DialogDescription>
-            Choose the format for exporting "{project.title}"
+            Choose the format for exporting &quot;{project.title}&quot;
           </DialogDescription>
         </DialogHeader>
 

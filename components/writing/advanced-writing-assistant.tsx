@@ -1,8 +1,7 @@
 "use client";
 
-import { useState, useTransition, useEffect, useCallback } from "react";
+import { useState, useTransition, useEffect, useCallback, useRef } from "react"; // Added useRef
 import { useDebounce } from "@/lib/hooks/useDebouce";
-// MODIFIED: Import `addToPersonalCorpus`
 import {
   analyzeSentence,
   getSuggestions,
@@ -34,11 +33,16 @@ import {
   ChevronLeft,
   ChevronRight,
   PlusCircle,
-  BookPlus, // ADDED
-  ScanLine, // ADDED
+  BookPlus,
+  ScanLine,
 } from "lucide-react";
-import { toast } from "sonner"; // ADDED
-import type { WordAnalysis, SuggestionResult } from "@/lib/types";
+import { toast } from "sonner";
+import type { WordAnalysis, SuggestionResult, Suggestions } from "@/lib/types";
+
+// NEW: Helper to get the line number from cursor position
+const getLineFromPos = (text: string, pos: number) => {
+  return text.substring(0, pos).split("\n").length - 1;
+};
 
 interface AdvancedWritingAssistantProps {
   projectContent: string;
@@ -55,27 +59,30 @@ export function AdvancedWritingAssistant({
     projectContent.split("\n")
   );
   const [guidedSentenceIndex, setGuidedSentenceIndex] = useState(0);
+  const [activeLineIndex, setActiveLineIndex] = useState(0); // NEW: State for active line in freestyle
   const [wordAnalyses, setWordAnalyses] = useState<WordAnalysis[]>([]);
   const [suggestions, setSuggestions] = useState<SuggestionResult | null>(null);
   const [isPending, startTransition] = useTransition();
-  const [isAddingToCorpus, setIsAddingToCorpus] = useState(false); // ADDED
+  const [isAddingToCorpus, setIsAddingToCorpus] = useState(false);
+  const textareaRef = useRef<HTMLTextAreaElement>(null); // NEW: Ref for the textarea
 
-  const currentGuidedSentence = sentences[guidedSentenceIndex] || "";
+  // Determine the currently active sentence for analysis, for either mode
   const activeLineForAnalysis =
     mode === "guided"
-      ? currentGuidedSentence
-      : projectContent.split("\n").pop() || "";
+      ? sentences[guidedSentenceIndex] || ""
+      : sentences[activeLineIndex] || "";
 
   useEffect(() => {
     setSentences(projectContent.split("\n"));
   }, [projectContent]);
 
-  // MODIFIED: Debounce is now only for freestyle text analysis
-  const debouncedFreestyleText = useDebounce(projectContent, 1000);
+  // Debounce the line that needs analysis to avoid excessive calls
+  const debouncedActiveLine = useDebounce(activeLineForAnalysis, 500);
 
   const analyzeLine = useCallback(async (lineText: string) => {
     if (!lineText.trim()) {
       setWordAnalyses([]);
+      setSuggestions(null);
       return;
     }
     startTransition(async () => {
@@ -83,23 +90,17 @@ export function AdvancedWritingAssistant({
       if (result && !("error" in result)) {
         setWordAnalyses(result.wordAnalyses);
       } else {
-        toast.error("Analysis Failed", { description: result.error });
+        toast.error("Analysis Failed", {
+          description: (result as { error: string }).error,
+        });
       }
     });
   }, []);
 
   useEffect(() => {
-    // MODIFIED: This effect now ONLY handles auto-analysis for freestyle mode.
-    if (mode === "textarea") {
-      const lines = debouncedFreestyleText.split("\n");
-      // Analyze the last line as the user types.
-      analyzeLine(lines[lines.length - 1] || "");
-    } else {
-      // In guided mode, clear analysis when sentence changes, user must manually re-analyze.
-      setWordAnalyses([]);
-      setSuggestions(null);
-    }
-  }, [debouncedFreestyleText, mode, analyzeLine, guidedSentenceIndex]); // MODIFIED: Added guidedSentenceIndex
+    // This effect now triggers analysis whenever the debounced active line changes
+    analyzeLine(debouncedActiveLine);
+  }, [debouncedActiveLine, analyzeLine]);
 
   // --- HANDLERS ---
   const handleGuidedSentenceChange = (
@@ -110,6 +111,19 @@ export function AdvancedWritingAssistant({
     updatedSentences[guidedSentenceIndex] = newSentence;
     setSentences(updatedSentences);
     onContentChange(updatedSentences.join("\n"));
+  };
+
+  // NEW: Handler to update the active line index based on cursor position in the textarea
+  const handleCursorActivity = () => {
+    if (textareaRef.current) {
+      const currentLine = getLineFromPos(
+        textareaRef.current.value,
+        textareaRef.current.selectionStart
+      );
+      if (currentLine !== activeLineIndex) {
+        setActiveLineIndex(currentLine);
+      }
+    }
   };
 
   const handleWordClick = (word: string) => {
@@ -133,7 +147,6 @@ export function AdvancedWritingAssistant({
     }
   };
 
-  // NEW: Handler to add the current sentence to the personal corpus
   const handleAddToCorpus = async () => {
     if (!activeLineForAnalysis.trim()) {
       toast.warning("Cannot add an empty sentence to the corpus.");
@@ -142,22 +155,15 @@ export function AdvancedWritingAssistant({
     setIsAddingToCorpus(true);
     const result = await addToPersonalCorpus([activeLineForAnalysis]);
     if (result.success) {
-      toast.success("Sentence Added", {
-        description: `"${activeLineForAnalysis.substring(
-          0,
-          30
-        )}..." added to your personal corpus.`,
-      });
-      // Optionally re-analyze the line to reflect the new "correct" status
+      toast.success("Sentence Added");
       analyzeLine(activeLineForAnalysis);
     } else {
-      toast.error("Failed to Add Sentence", {
-        description: result.error,
-      });
+      toast.error("Failed to Add Sentence", { description: result.error });
     }
     setIsAddingToCorpus(false);
   };
 
+  // Guided mode navigation
   const goToPrevSentence = () =>
     setGuidedSentenceIndex((prev) => Math.max(0, prev - 1));
   const goToNextSentence = () =>
@@ -169,7 +175,7 @@ export function AdvancedWritingAssistant({
     onContentChange(newSentences.join("\n"));
   };
 
-  // --- HIGHLIGHTING LOGIC ---
+  // --- UI Helpers (Highlighting, Icons, etc.) remain the same ---
   const highlightSentence = (
     sentence: string,
     baseWordsToHighlight: Set<string>
@@ -191,11 +197,9 @@ export function AdvancedWritingAssistant({
       })
       .join("");
   };
-
   const baseWordsForHighlighting = new Set(
     activeLineForAnalysis.split(/\s+/).map(getBaseWord).filter(Boolean)
   );
-
   const getWordStatusColor = (status: "correct" | "variant" | "unknown") => {
     switch (status) {
       case "correct":
@@ -208,7 +212,6 @@ export function AdvancedWritingAssistant({
         return "text-gray-600 bg-gray-50 border-gray-200";
     }
   };
-
   const getStatusIcon = (status: "correct" | "variant" | "unknown") => {
     switch (status) {
       case "correct":
@@ -234,7 +237,9 @@ export function AdvancedWritingAssistant({
                 </CardTitle>
                 <CardDescription>
                   {mode === "textarea"
-                    ? "Write freely. Changes auto-save."
+                    ? `Editing line ${
+                        activeLineIndex + 1
+                      }. Your work saves automatically.`
                     : `Editing sentence ${guidedSentenceIndex + 1} of ${
                         sentences.length
                       }.`}
@@ -252,8 +257,17 @@ export function AdvancedWritingAssistant({
           <CardContent className="space-y-4 flex-grow flex flex-col">
             {mode === "textarea" ? (
               <Textarea
+                ref={textareaRef}
                 value={projectContent}
-                onChange={(e) => onContentChange(e.target.value)}
+                onChange={(e) => {
+                  onContentChange(e.target.value);
+                  // This is important to update the line index while typing.
+                  handleCursorActivity();
+                }}
+                // onSelect is a more reliable event for cursor position changes via mouse.
+                onSelect={handleCursorActivity}
+                // onKeyUp handles cursor movement via arrow keys.
+                onKeyUp={handleCursorActivity}
                 placeholder="Barreessuu jalqabi..."
                 className="flex-grow text-lg leading-relaxed"
               />
@@ -261,16 +275,20 @@ export function AdvancedWritingAssistant({
               <div className="space-y-4">
                 <div className="flex items-center gap-2">
                   <Input
-                    value={currentGuidedSentence}
+                    value={sentences[guidedSentenceIndex] || ""}
                     onChange={handleGuidedSentenceChange}
                     placeholder="Type one sentence here..."
                     className="text-lg h-12 flex-grow"
                   />
-                  {/* ADDED: Manual analysis button for guided mode */}
                   <Button
                     variant="secondary"
-                    onClick={() => analyzeLine(currentGuidedSentence)}
-                    disabled={isPending || !currentGuidedSentence.trim()}
+                    onClick={() =>
+                      analyzeLine(sentences[guidedSentenceIndex] || "")
+                    }
+                    disabled={
+                      isPending ||
+                      !(sentences[guidedSentenceIndex] || "").trim()
+                    }
                   >
                     <ScanLine className="h-4 w-4 mr-2" /> Analyze
                   </Button>
@@ -298,13 +316,13 @@ export function AdvancedWritingAssistant({
                 </div>
               </div>
             )}
+            {/* Analysis card - no changes needed here */}
             {wordAnalyses.length > 0 && (
               <Card className="bg-muted/50 mt-auto">
                 <CardHeader className="pb-3 flex-row items-center justify-between">
                   <CardTitle className="text-sm">
                     Current Sentence Analysis
                   </CardTitle>
-                  {/* ADDED: "Add to Corpus" Button */}
                   <Button
                     size="sm"
                     variant="outline"
@@ -342,6 +360,7 @@ export function AdvancedWritingAssistant({
         </Card>
       </div>
       <div className="space-y-4">
+        {/* Assistant card - no changes needed here */}
         <Card className="h-full">
           <CardHeader>
             <CardTitle className="text-lg flex items-center gap-2">
@@ -358,32 +377,44 @@ export function AdvancedWritingAssistant({
                 <div className="space-y-4">
                   <Separator />
                   <div className="space-y-3">
-                    {(suggestions.suggestions as any[]).map((item, index) => {
-                      const sentence =
-                        suggestions.type === "overlap" ? item.sentence : item;
-                      const overlap =
-                        suggestions.type === "overlap" ? item.overlap : null;
-                      return (
-                        <div
-                          key={index}
-                          className="p-3 bg-muted/50 rounded-lg text-sm italic"
-                        >
-                          {overlap && (
-                            <Badge variant="secondary" className="mb-2">
-                              {overlap} matches
-                            </Badge>
-                          )}
-                          <p
-                            dangerouslySetInnerHTML={{
-                              __html: highlightSentence(
-                                sentence,
-                                baseWordsForHighlighting
-                              ),
-                            }}
-                          />
-                        </div>
-                      );
-                    })}
+                    {(suggestions.suggestions as Suggestions).map(
+                      (item, index) => {
+                        let sentence: string;
+                        let overlap: number | null = null;
+                        if (
+                          suggestions.type === "overlap" &&
+                          typeof item === "object" &&
+                          item !== null &&
+                          "sentence" in item &&
+                          "overlap" in item
+                        ) {
+                          sentence = item.sentence;
+                          overlap = item.overlap;
+                        } else {
+                          sentence = item as string;
+                        }
+                        return (
+                          <div
+                            key={index}
+                            className="p-3 bg-muted/50 rounded-lg text-sm italic"
+                          >
+                            {overlap !== null && (
+                              <Badge variant="secondary" className="mb-2">
+                                {overlap} matches
+                              </Badge>
+                            )}
+                            <p
+                              dangerouslySetInnerHTML={{
+                                __html: highlightSentence(
+                                  sentence,
+                                  baseWordsForHighlighting
+                                ),
+                              }}
+                            />
+                          </div>
+                        );
+                      }
+                    )}
                   </div>
                 </div>
               ) : (

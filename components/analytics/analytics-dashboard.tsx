@@ -2,11 +2,7 @@
 
 import { useState, useEffect, useTransition } from "react";
 import { getUserAnalytics } from "@/lib/actions/analytics";
-import type {
-  FullAnalyticsData,
-  AnalyticsData,
-  WordAnalysisData,
-} from "@/lib/types";
+import type { FullAnalyticsData } from "@/lib/types";
 
 import {
   Card,
@@ -27,22 +23,11 @@ import {
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
-  LineChart,
-  Line,
   PieChart,
   Pie,
   Cell,
 } from "recharts";
-import {
-  Target,
-  BookOpen,
-  CheckCircle,
-  AlertTriangle,
-  XCircle,
-  Calendar,
-  Award,
-  Loader2,
-} from "lucide-react";
+import { Target, BookOpen, Calendar, Award, Loader2 } from "lucide-react";
 
 export function AnalyticsDashboard() {
   const [data, setData] = useState<FullAnalyticsData | null>(null);
@@ -83,10 +68,10 @@ export function AnalyticsDashboard() {
     overview,
     progressOverTime,
     projectBreakdown,
-    wordStats,
-    topErrors,
-    improvementAreas,
-    accuracyByProject,
+    // wordStats,
+    // topErrors,
+    // improvementAreas,
+    // accuracyByProject,
   } = data;
 
   const sentenceStatusData = [

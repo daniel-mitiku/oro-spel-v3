@@ -147,6 +147,7 @@ model UserAnalytics {
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
   userId String @db.ObjectId
 
+  @@unique([userId, date])
   @@map("user_analytics")
 }
 

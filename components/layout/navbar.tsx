@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -20,6 +19,7 @@ import {
   Home,
   Database,
   BarChart3,
+  Gamepad,
 } from "lucide-react";
 import { ModeToggle } from "../shared/toggle-mode";
 import { logoutUser } from "@/lib/actions/auth";
@@ -32,7 +32,6 @@ interface NavbarProps {
 }
 
 export function Navbar({ user }: NavbarProps) {
-  const router = useRouter();
   const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   const handleLogout = async () => {
@@ -76,11 +75,11 @@ export function Navbar({ user }: NavbarProps) {
                   Dashboard
                 </Link>
                 <Link
-                  href="/projects"
+                  href="/game"
                   className="text-muted-foreground hover:text-foreground transition-colors flex items-center gap-2"
                 >
-                  <BookOpen className="h-4 w-4" />
-                  Projects
+                  <Gamepad className="h-4 w-4" />
+                  Quiz Game
                 </Link>
                 <Link
                   href="/corpus"

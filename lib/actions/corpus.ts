@@ -42,7 +42,7 @@ async function getGlobalIndexData(
       typeof error === "object" &&
       error !== null &&
       "code" in error &&
-      (error as any).code !== "ENOENT"
+      (error as { code: string }).code !== "ENOENT"
     ) {
       console.error(`Failed to read global index for ${baseWord}:`, error);
     }
@@ -238,6 +238,7 @@ export async function getSuggestions({
 
       const suggestions = sorted
         .map(([id, overlap], index) => ({
+          id, // include the id so it's used
           sentence: sentences[index],
           overlap,
         }))
