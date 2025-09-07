@@ -1,5 +1,7 @@
 # Barreessaa: The Intelligent Oromo Writing Assistant
 
+[**🌐 Live Demo**](https://oro-spel-v3-danoo-mikes-projects.vercel.app/)
+
 Barreessaa (meaning "writer" in Oromo) is a smart, context-aware writing assistant designed to solve a unique challenge in the Oromo language: the correct usage of vowel and consonant duplications. This application helps users write accurately and confidently by providing real-time feedback and contextual examples from a large sentence corpus.
 
 Whether you're a native speaker looking to perfect your formal writing or a learner trying to master the nuances of the language, Barreessaa is your personal guide.
