@@ -53,12 +53,11 @@ export async function registerUser(formData: FormData) {
       sameSite: "lax",
       maxAge: 60 * 60 * 24 * 7, // 7 days
     });
-
-    redirect("/dashboard");
   } catch (error) {
     console.error("Registration error:", error);
     return { error: "Registration failed" };
   }
+  redirect("/dashboard");
 }
 
 export async function loginUser(formData: FormData) {
@@ -92,23 +91,12 @@ export async function loginUser(formData: FormData) {
       sameSite: "lax",
       maxAge: 60 * 60 * 24 * 7, // 7 days
     });
-
-    redirect("/dashboard");
   } catch (error) {
     console.error("Login error:", error);
-    // The redirect function throws an error, so you must re-throw it to avoid the client-side code running
-    // The previous error was a NEXT_REDIRECT that was being caught and logged but not re-thrown.
-    if (
-      error &&
-      typeof error === "object" &&
-      "digest" in error &&
-      typeof (error as { digest?: unknown }).digest === "string" &&
-      (error as { digest: string }).digest.includes("NEXT_REDIRECT")
-    ) {
-      throw error;
-    }
     return { error: "Login failed" };
   }
+
+  redirect("/dashboard");
 }
 
 export async function logoutUser() {
