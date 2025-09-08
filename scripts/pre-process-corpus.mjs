@@ -4,7 +4,7 @@ import path from 'path';
 // --- Configuration ---
 // Make sure this path points to your large text file with all the Oromo sentences.
 const INPUT_FILE = './sentence_corpus.txt';
-const OUTPUT_DIR = './public/data';
+const OUTPUT_DIR = './data';
 const SENTENCE_CHUNK_SIZE = 10000; // How many sentences per file
 
 // --- Helper Function ---

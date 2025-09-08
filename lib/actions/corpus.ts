@@ -27,7 +27,7 @@ async function getGlobalIndexData(
   }
   const filePath = path.join(
     process.cwd(),
-    "public",
+    // "public",
     "data",
     `index_${firstChar}.json`
   );
@@ -57,7 +57,7 @@ async function getSentencesByIds(sentenceIds: number[]): Promise<string[]> {
   if (sentenceIds.length === 0) return [];
 
   // This assumes you have metadata about the chunks
-  const metaPath = path.join(process.cwd(), "public", "data", "metadata.json");
+  const metaPath = path.join(process.cwd(), "data", "metadata.json"); // "public",
   const meta = JSON.parse(await fs.readFile(metaPath, "utf-8"));
   const { sentenceChunkSize } = meta;
 
@@ -72,7 +72,7 @@ async function getSentencesByIds(sentenceIds: number[]): Promise<string[]> {
       try {
         const chunkPath = path.join(
           process.cwd(),
-          "public",
+          // "public",
           "data",
           `sentences_${chunkId}.json`
         );
