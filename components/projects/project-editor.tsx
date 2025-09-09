@@ -50,7 +50,7 @@ export function ProjectEditor({ project: initialProject }: ProjectEditorProps) {
     const result = await updateProject(project.id, {
       content: content, // Save the current, non-debounced content
     });
-    if (result && "project" in result) {
+    if (result && !("error" in result)) {
       setProject(result.project);
       toast.success("Project Saved", {
         description: "Your writing has been successfully saved.",
@@ -71,7 +71,7 @@ export function ProjectEditor({ project: initialProject }: ProjectEditorProps) {
         const result = await updateProject(project.id, {
           content: debouncedContent,
         });
-        if (result && "project" in result) {
+        if (result && !("error" in result)) {
           setProject(result.project);
           toast.success("Progress Saved", {
             description: "Your writing has been auto-saved.",

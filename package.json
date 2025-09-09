@@ -7,7 +7,6 @@
     "build": "next build --turbopack",
     "start": "next start",
     "lint": "eslint",
-    "prebuild": "node scripts/pre-process-corpus.mjs",
     "seed": "node --loader ts-node/esm prisma/seed.mjs"
   },
   "dependencies": {
