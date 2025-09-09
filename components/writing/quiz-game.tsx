@@ -18,6 +18,8 @@ import {
   RotateCw,
   Trophy,
 } from "lucide-react";
+import { saveQuizSession } from "@/lib/actions/quiz";
+import { toast } from "sonner";
 
 interface QuizSentence {
   correct: string;
@@ -26,7 +28,7 @@ interface QuizSentence {
 
 interface QuizGameProps {
   sentences: QuizSentence[];
-  onComplete?: (score: number) => void;
+  onComplete?: () => void;
 }
 
 export function QuizGame({ sentences, onComplete }: QuizGameProps) {
@@ -39,6 +41,14 @@ export function QuizGame({ sentences, onComplete }: QuizGameProps) {
   const [score, setScore] = useState(0);
   const [attempts, setAttempts] = useState(0);
   const inputRef = useRef<HTMLDivElement>(null);
+
+  // NEW: State for timing the quiz
+  const [startTime, setStartTime] = useState<number | null>(null);
+
+  useEffect(() => {
+    // Start the timer when the component mounts
+    setStartTime(Date.now());
+  }, []);
 
   const isComplete = currentIndex >= sentences.length;
   const currentSentence = sentences[currentIndex];
@@ -105,10 +115,30 @@ export function QuizGame({ sentences, onComplete }: QuizGameProps) {
     setFeedback({ text: "", type: "success" });
   };
 
-  const handleComplete = () => {
+  // REWRITTEN: handleComplete now saves the session
+  const handleComplete = async () => {
+    const endTime = Date.now();
+    const timeSpent = startTime ? Math.round((endTime - startTime) / 1000) : 0;
     const finalScore = Math.round((score / sentences.length) * 100);
-    onComplete?.(finalScore);
-    handleRestart();
+
+    const result = await saveQuizSession({
+      score: finalScore,
+      totalQuestions: sentences.length,
+      correctAnswers: score,
+      timeSpent: timeSpent,
+    });
+
+    if (result.success) {
+      toast.success("Quiz results saved!");
+    } else {
+      toast.error("Could not save results", { description: result.error });
+    }
+
+    if (onComplete) {
+      onComplete();
+    } else {
+      handleRestart(); // Default behavior if no onComplete is provided
+    }
   };
 
   if (isComplete) {

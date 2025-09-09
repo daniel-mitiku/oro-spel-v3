@@ -3,9 +3,9 @@
 import { useState, useTransition, useEffect, useCallback, useRef } from "react"; // Added useRef
 import { useDebounce } from "@/lib/hooks/useDebouce";
 import {
+  addToPersonalCorpus,
   analyzeSentence,
   getSuggestions,
-  addToPersonalCorpus,
 } from "@/lib/actions/corpus";
 import { getBaseWord } from "@/lib/utils";
 
@@ -128,7 +128,7 @@ export function AdvancedWritingAssistant({
 
   const handleWordClick = (word: string) => {
     startTransition(async () => {
-      const result = await getSuggestions({ words: [word], mode: "single" });
+      const result = await getSuggestions({ words: [word], mode: "single" }); //
       if (result && "suggestions" in result) {
         setSuggestions(result);
       }
@@ -139,7 +139,7 @@ export function AdvancedWritingAssistant({
     const words = activeLineForAnalysis.split(/\s+/).filter(Boolean);
     if (words.length > 0) {
       startTransition(async () => {
-        const result = await getSuggestions({ words, mode: "overlap" });
+        const result = await getSuggestions({ words: words, mode: "overlap" }); //
         if (result && "suggestions" in result) {
           setSuggestions(result);
         }
@@ -154,7 +154,7 @@ export function AdvancedWritingAssistant({
     }
     setIsAddingToCorpus(true);
     const result = await addToPersonalCorpus([activeLineForAnalysis]);
-    if (result.success) {
+    if (result && !("error" in result)) {
       toast.success("Sentence Added");
       analyzeLine(activeLineForAnalysis);
     } else {
@@ -339,9 +339,9 @@ export function AdvancedWritingAssistant({
                 </CardHeader>
                 <CardContent>
                   <div className="flex flex-wrap gap-2">
-                    {wordAnalyses.map((analysis) => (
+                    {wordAnalyses.map((analysis, idx) => (
                       <Badge
-                        key={analysis.position}
+                        key={idx}
                         variant="outline"
                         className={`cursor-pointer ${getWordStatusColor(
                           analysis.status

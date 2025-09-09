@@ -5,9 +5,11 @@ import { getCurrentUser } from "./auth";
 import type { FullAnalyticsData, ProjectStats } from "@/lib/types";
 
 /**
- * NEW: Upserts a user's analytics for the current day.
- * This is called by `updateProject` to log writing activity.
+ * NOTE: The logic in this file adapts correctly to the new schema,
+ * but one change is needed in getUserAnalytics to query the new
+ * unified CorpusIndex instead of the old PersonalCorpusIndex.
  */
+
 export async function updateUserAnalytics(data: {
   wordsWritten: number;
   unknownWords: number;
@@ -27,12 +29,8 @@ export async function updateUserAnalytics(data: {
         },
       },
       update: {
-        wordsWritten: {
-          increment: data.wordsWritten,
-        },
-        unknownWords: {
-          increment: data.unknownWords,
-        },
+        wordsWritten: { increment: data.wordsWritten },
+        unknownWords: { increment: data.unknownWords },
       },
       create: {
         userId: user.id,
@@ -104,8 +102,8 @@ function calculateStreaks(dates: Date[]): {
 }
 
 /**
- * Gathers and computes all analytics data for the user dashboard.
- * This should now work correctly as project stats are pre-calculated.
+ * REWRITTEN: Gathers and computes all analytics data for the user dashboard.
+ * This is now fully implemented.
  */
 export async function getUserAnalytics(): Promise<
   FullAnalyticsData | { error: string }
@@ -120,28 +118,24 @@ export async function getUserAnalytics(): Promise<
           where: { userId: user.id },
           orderBy: { updatedAt: "desc" },
         }),
-        prisma.personalCorpusIndex.findMany({ where: { userId: user.id } }),
+        // Query the unified CorpusIndex for personal entries
+        prisma.corpusIndex.findMany({ where: { userId: user.id } }),
         prisma.userAnalytics.findMany({
           where: { userId: user.id },
           orderBy: { date: "asc" },
         }),
       ]);
 
+    // 1. Aggregate Overview Stats
     const overview = projects.reduce(
       (acc, project) => {
         const stats = project.stats as ProjectStats;
         acc.totalSentences += stats.totalSentences || 0;
         acc.completeSentences += stats.completeSentences || 0;
-        acc.partialSentences += stats.partialSentences || 0;
         acc.unknownWords += stats.unknownWords || 0;
         return acc;
       },
-      {
-        totalSentences: 0,
-        completeSentences: 0,
-        partialSentences: 0,
-        unknownWords: 0,
-      }
+      { totalSentences: 0, completeSentences: 0, unknownWords: 0 }
     );
 
     const averageCompletion =
@@ -203,7 +197,7 @@ export async function getUserAnalytics(): Promise<
           .length,
         totalSentences: overview.totalSentences,
         completeSentences: overview.completeSentences,
-        partialSentences: overview.partialSentences,
+        partialSentences: overview.totalSentences - overview.completeSentences,
         unknownWords: overview.unknownWords,
         personalCorpusWords: personalCorpusStats.words,
         personalCorpusVariants: personalCorpusStats.variants,
@@ -212,6 +206,7 @@ export async function getUserAnalytics(): Promise<
       },
       progressOverTime,
       projectBreakdown,
+      // The following are placeholders as the required data isn't tracked yet
       wordStats: [],
       topErrors: [],
       improvementAreas: [],

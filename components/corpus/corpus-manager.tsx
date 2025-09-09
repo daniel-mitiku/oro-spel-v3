@@ -1,6 +1,12 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useTransition } from "react";
+import {
+  getPersonalCorpusStatsAndData,
+  deletePersonalCorpusSentence,
+} from "@/lib/actions/corpus";
+
+import { toast } from "sonner";
 import {
   Card,
   CardContent,
@@ -8,18 +14,18 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import {
   Database,
   BookOpen,
   TrendingUp,
   Loader2,
   AlertCircle,
+  Trash2,
 } from "lucide-react";
-import { getPersonalCorpusStatsAndData } from "@/lib/actions/corpus"; // Import the new action and its type
-import { PersonalCorpusIndexData } from "@/lib/types";
+import { Alert, AlertDescription } from "../ui/alert";
 
 interface CorpusStats {
   totalWords: number;
@@ -27,88 +33,67 @@ interface CorpusStats {
   totalVariants: number;
 }
 
+interface PersonalCorpusEntry {
+  id: string;
+  sentence: string;
+  baseWords: string[];
+}
+
 export function CorpusManager() {
-  // Use the specific types for state
-  const [personalCorpus, setPersonalCorpus] = useState<
-    PersonalCorpusIndexData[]
-  >([]);
+  const [personalCorpus, setPersonalCorpus] = useState<PersonalCorpusEntry[]>(
+    []
+  );
   const [stats, setStats] = useState<CorpusStats | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    const getData = async () => {
-      setIsLoading(true);
+  const fetchData = async () => {
+    startTransition(async () => {
       setError(null);
       const result = await getPersonalCorpusStatsAndData();
-
       if (result.error) {
         setError(result.error);
-        setPersonalCorpus([]);
-        setStats(null);
+        toast.error("Failed to fetch corpus data", {
+          description: result.error,
+        });
       } else if (result.corpusData && result.stats) {
-        setPersonalCorpus(result.corpusData);
+        // Since we only want to show sentences, we need to process the data differently.
+        const allSentences: PersonalCorpusEntry[] = [];
+        result.corpusData.forEach((entry) => {
+          // This is a client-side calculation to create a new structure
+          entry.sentences.forEach((sentence: string, index: number) => {
+            const sentenceId = `${entry.id}-${index}`; // This is a temporary ID for the list
+            allSentences.push({
+              id: sentenceId,
+              sentence: sentence,
+              baseWords: [entry.baseWord],
+            });
+          });
+        });
+        setPersonalCorpus(allSentences);
         setStats(result.stats);
       }
-      setIsLoading(false);
-    };
+    });
+  };
 
-    getData();
+  useEffect(() => {
+    fetchData();
   }, []);
 
-  const renderContent = () => {
-    if (isLoading) {
-      return (
-        <div className="flex items-center justify-center h-64">
-          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-        </div>
-      );
+  const handleDeleteSentence = async (sentenceId: string) => {
+    if (
+      confirm(
+        "Are you sure you want to delete this sentence? This cannot be undone."
+      )
+    ) {
+      const result = await deletePersonalCorpusSentence(sentenceId);
+      if (result.success) {
+        toast.success("Sentence deleted successfully.");
+        fetchData(); // Refresh the data
+      } else {
+        toast.error("Deletion failed", { description: result.error });
+      }
     }
-
-    if (error) {
-      return (
-        <Alert variant="destructive">
-          <AlertCircle className="h-4 w-4" />
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
-      );
-    }
-
-    return (
-      <TabsContent value="overview">
-        <Card>
-          <CardHeader>
-            <CardTitle>Personal Corpus</CardTitle>
-            <CardDescription>
-              A summary of the words and sentences you have added.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <ScrollArea className="h-[400px]">
-              <div className="space-y-4">
-                {personalCorpus.map((entry) => (
-                  <div
-                    key={entry.id}
-                    className="flex items-center justify-between p-3 border rounded-lg"
-                  >
-                    <div>
-                      <div className="font-medium">{entry.baseWord}</div>
-                      <div className="text-sm text-muted-foreground">
-                        {entry.variants.length} variants •{" "}
-                        {entry.sentenceIds.length} sentences
-                      </div>
-                    </div>
-                    <div className="text-xs text-muted-foreground">
-                      {new Date(entry.createdAt).toLocaleDateString()}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </ScrollArea>
-          </CardContent>
-        </Card>
-      </TabsContent>
-    );
   };
 
   return (
@@ -151,12 +136,65 @@ export function CorpusManager() {
         </Card>
       </div>
 
-      <Tabs defaultValue="overview">
-        <TabsList>
-          <TabsTrigger value="overview">Overview</TabsTrigger>
-        </TabsList>
-        {renderContent()}
-      </Tabs>
+      <Card>
+        <CardHeader>
+          <CardTitle>Personal Corpus Browser</CardTitle>
+          <CardDescription>
+            View and manage the sentences you&apos;ve added.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {isPending ? (
+            <div className="flex justify-center items-center h-[500px]">
+              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            </div>
+          ) : error ? (
+            <div className="h-[500px] flex items-center justify-center">
+              <Alert variant="destructive">
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription>{error}</AlertDescription>
+              </Alert>
+            </div>
+          ) : (
+            <ScrollArea className="h-[500px]">
+              <div className="space-y-4">
+                {personalCorpus.length > 0 ? (
+                  personalCorpus.map((entry) => (
+                    <div
+                      key={entry.id}
+                      className="border rounded-lg p-3 flex items-start justify-between gap-4"
+                    >
+                      <div className="flex-1">
+                        <p className="text-sm text-muted-foreground italic">
+                          {entry.sentence}
+                        </p>
+                        <div className="flex flex-wrap gap-2 mt-2">
+                          {entry.baseWords.map((word) => (
+                            <Badge key={word} variant="outline">
+                              {word}
+                            </Badge>
+                          ))}
+                        </div>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleDeleteSentence(entry.id)}
+                      >
+                        <Trash2 className="h-4 w-4 text-destructive" />
+                      </Button>
+                    </div>
+                  ))
+                ) : (
+                  <div className="text-center text-muted-foreground py-10">
+                    No sentences found in your personal corpus.
+                  </div>
+                )}
+              </div>
+            </ScrollArea>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }
