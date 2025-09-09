@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useTransition, Key } from "react";
+import { useState, useEffect, useTransition } from "react";
 import {
   getPersonalCorpusStatsAndData,
   deletePersonalCorpusSentence,
@@ -26,7 +26,6 @@ import {
   Trash2,
 } from "lucide-react";
 import { Alert, AlertDescription } from "../ui/alert";
-import { EnhancedCorpusData } from "@/lib/types";
 
 interface CorpusStats {
   totalWords: number;
@@ -141,7 +140,7 @@ export function CorpusManager() {
         <CardHeader>
           <CardTitle>Personal Corpus Browser</CardTitle>
           <CardDescription>
-            View and manage the sentences you've added.
+            View and manage the sentences you&apos;ve added.
           </CardDescription>
         </CardHeader>
         <CardContent>

@@ -78,7 +78,7 @@ export async function getQuizSentences(
               sentence: string;
               words: string;
               baseWords: string;
-              source: any;
+              source: unknown;
               createdAt: Date;
               userId: string;
             }[]

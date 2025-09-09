@@ -152,7 +152,7 @@ export async function updateProject(
         title: data.title,
         description: data.description,
         content: data.content,
-        stats: newStats as any,
+        stats: newStats as ProjectStats,
       },
       include: { sentences: true },
     });
@@ -192,7 +192,7 @@ export async function createProject(title: string, description?: string) {
           partialSentences: 0,
           unknownWords: 0,
           completionRate: 0,
-        } as any,
+        },
       },
     });
     revalidatePath("/dashboard");
@@ -220,7 +220,7 @@ export async function getUserProjects(): Promise<{
     // The stats are already on the project model, so we just need to cast the type.
     const projectsForDashboard: ProjectForDashboard[] = projects.map((p) => ({
       ...p,
-      stats: p.stats as any as ProjectStats,
+      stats: p.stats as ProjectStats,
     }));
 
     return { projects: projectsForDashboard };
