@@ -5,15 +5,21 @@ generator client {
   provider = "prisma-client-js"
 }
 
-// Datasource has been updated to use MongoDB.
 datasource db {
   provider = "mongodb"
   url      = env("DATABASE_URL")
   // url      = "mongodb+srv://diago:CnbAhamGnqXeb8qF@cluster0.zdxmf2n.mongodb.net/alloc?retryWrites=true&w=majority&appName=Cluster0"
 }
 
+// NEW MODEL: To store the sentences from the base corpus file.
+model GlobalSentence {
+  id   Int    @id @map("_id")
+  text String
+
+  @@map("global_sentences")
+}
+
 model User {
-  // ID fields are updated to use MongoDB's native ObjectId.
   id        String   @id @default(auto()) @map("_id") @db.ObjectId
   email     String   @unique
   password  String
@@ -22,14 +28,51 @@ model User {
   updatedAt DateTime @updatedAt
 
   // Relations
-  projects            Project[]
-  personalCorpus      PersonalCorpus[]
-  quizSessions        QuizSession[]
-  analytics           UserAnalytics[]
-  PersonalCorpusIndex PersonalCorpusIndex[]
+  projects       Project[]
+  personalCorpus PersonalCorpus[]
+  corpusIndex    CorpusIndex[] // UPDATED: Relation to the new unified index
+  quizSessions   QuizSession[]
+  analytics      UserAnalytics[]
 
   @@map("users")
 }
+
+// UPDATED: This model now handles BOTH global and personal indexes.
+model CorpusIndex {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  baseWord    String
+  variants    String[]
+  sentenceIds String[] // Stores GlobalSentence IDs (as strings) or PersonalCorpus IDs
+
+  // userId is optional. If null, it's a global entry.
+  userId String? @db.ObjectId
+
+  // Relations
+  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  // updatedAt DateTime @updatedAt
+
+  @@unique([baseWord, userId])
+  @@map("corpus_indices")
+}
+
+model PersonalCorpus {
+  id        String       @id @default(auto()) @map("_id") @db.ObjectId
+  sentence  String
+  words     String // JSON array of words
+  baseWords String // JSON array of base words (normalized)
+  source    CorpusSource @default(manual)
+  createdAt DateTime     @default(now())
+
+  // Relations
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String @db.ObjectId
+
+  @@map("personal_corpus")
+}
+
+// Other models (Project, ProjectSentence, etc.) remain the same...
 
 model Project {
   id          String        @id @default(auto()) @map("_id") @db.ObjectId
@@ -50,11 +93,8 @@ model Project {
 
   sentences      ProjectSentence[]
   personalCorpus String[]
-
-  // Add the stats field as a JSON object
-  stats Json @default("{\"totalSentences\": 0, \"completeSentences\": 0, \"partialSentences\": 0, \"unknownWords\": 0, \"completionRate\": 0}")
-
-  sessions WritingSession[]
+  stats          Json              @default("{\"totalSentences\": 0, \"completeSentences\": 0, \"partialSentences\": 0, \"unknownWords\": 0, \"completionRate\": 0}")
+  sessions       WritingSession[]
 
   @@map("projects")
 }
@@ -70,24 +110,9 @@ model ProjectSentence {
   // Relations
   project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
   projectId String  @db.ObjectId
-  analysis  Json? // Store analysis results for the sentence
+  analysis  Json?
 
   @@map("project_sentences")
-}
-
-model PersonalCorpusIndex {
-  id          String   @id @default(auto()) @map("_id") @db.ObjectId
-  baseWord    String
-  variants    String[]
-  sentenceIds String[]
-  createdAt   DateTime @default(now())
-
-  // Relations
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  userId String @db.ObjectId
-
-  @@unique([userId, baseWord])
-  @@map("personal_corpus_indices")
 }
 
 model WritingSession {
@@ -101,21 +126,6 @@ model WritingSession {
   projectId String  @db.ObjectId
 
   @@map("writing_sessions")
-}
-
-model PersonalCorpus {
-  id        String       @id @default(auto()) @map("_id") @db.ObjectId
-  sentence  String
-  words     String // JSON array of words
-  baseWords String // JSON array of base words (normalized)
-  source    CorpusSource @default(manual)
-  createdAt DateTime     @default(now())
-
-  // Relations
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  userId String @db.ObjectId
-
-  @@map("personal_corpus")
 }
 
 model QuizSession {

@@ -48,8 +48,12 @@ export type SuggestionResult = {
 };
 
 // Define the type for the payload to ensure consistency
-export type PersonalCorpusIndexData =
-  Prisma.PersonalCorpusIndexGetPayload<object>;
+export type PersonalCorpusIndexData = Prisma.CorpusIndexGetPayload<object>;
+
+// Extend the type to include the sentences we'll be fetching
+export type EnhancedCorpusData = PersonalCorpusIndexData & {
+  sentences: string[];
+};
 
 // --- Analytics Dashboard Types ---
 

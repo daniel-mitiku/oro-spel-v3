@@ -2,8 +2,6 @@
 
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "./auth";
-import fs from "fs/promises";
-import path from "path";
 import { getBaseWord } from "@/lib/utils";
 
 interface QuizSentence {
@@ -11,81 +9,82 @@ interface QuizSentence {
   hint: string;
 }
 
-// Helper function to shuffle an array
-function shuffleArray<T>(array: T[]): T[] {
-  for (let i = array.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [array[i], array[j]] = [array[j], array[i]];
-  }
-  return array;
-}
-
 /**
- * Fetches a specified number of random sentences for the quiz game.
- * @param count The number of sentences to fetch.
- * @param source The source of the sentences ('global' or 'personal').
+ * REWRITTEN: Fetches random sentences for the quiz game from the database.
  */
 export async function getQuizSentences(
   count: number,
   source: "global" | "personal"
 ): Promise<{ sentences?: QuizSentence[]; error?: string }> {
   const user = await getCurrentUser();
-  if (!user) {
-    return { error: "Unauthorized" };
-  }
+  if (!user) return { error: "Unauthorized" };
 
   try {
     let selectedSentences: string[] = [];
 
     if (source === "personal") {
-      const personalSentences = await prisma.personalCorpus.findMany({
+      const personalCount = await prisma.personalCorpus.count({
         where: { userId: user.id },
       });
-      if (personalSentences.length < count) {
+      if (personalCount < count) {
         return {
-          error:
-            "Not enough sentences in your personal corpus. Add more sentences or use the global corpus.",
+          error: `Not enough sentences in your personal corpus (found ${personalCount}). You need at least ${count}.`,
         };
       }
-      selectedSentences = shuffleArray(
-        personalSentences.map((s) => s.sentence)
-      ).slice(0, count);
+      // Fetch random sentences
+      const personalSentences = await prisma.personalCorpus.findMany({
+        where: { userId: user.id },
+        take: count,
+        // This is a way to get random documents in Prisma with MongoDB
+        // It's not perfectly performant but fine for this use case.
+        skip: Math.max(0, Math.floor(Math.random() * (personalCount - count))),
+      });
+      selectedSentences = personalSentences.map((s) => s.sentence);
     } else {
       // 'global' source
-      const metaPath = path.join(
-        process.cwd(),
-        "public",
-        "data",
-        "metadata.json"
-      );
-      const meta = JSON.parse(await fs.readFile(metaPath, "utf-8"));
-      const { numSentenceChunks } = meta; // sentenceChunkSize - never used
+      const globalCount = await prisma.globalSentence.count();
+      if (globalCount < count) {
+        return { error: "Not enough sentences in the global corpus." };
+      }
+      const globalSentences = await prisma.globalSentence.findMany({
+        take: count,
+        skip: Math.max(0, Math.floor(Math.random() * (globalCount - count))),
+      });
+      selectedSentences = globalSentences.map((s) => s.text);
+    }
 
-      // To get a truly random sample, we can pick sentences from random chunks.
-      const allSentences: string[] = [];
-      const chunkIds = Array.from({ length: numSentenceChunks }, (_, i) => i);
-      const shuffledChunkIds = shuffleArray(chunkIds);
+    // If we got fewer sentences than requested (edge case with skip), fill the rest
+    if (selectedSentences.length < count) {
+      const remainingCount = count - selectedSentences.length;
+      const moreSentences =
+        source === "global"
+          ? await prisma.globalSentence.findMany({ take: remainingCount })
+          : await prisma.personalCorpus.findMany({
+              where: { userId: user.id },
+              take: remainingCount,
+            });
 
-      for (const chunkId of shuffledChunkIds) {
-        if (allSentences.length >= count) break;
-        const chunkPath = path.join(
-          process.cwd(),
-          "public",
-          "data",
-          `sentences_${chunkId}.json`
+      if (source === "global") {
+        selectedSentences.push(
+          ...(moreSentences as { id: number; text: string }[]).map(
+            (s) => s.text
+          )
         );
-        const chunkContent = await fs.readFile(chunkPath, "utf-8");
-        const sentencesInChunk: string[] = JSON.parse(chunkContent);
-        allSentences.push(...sentencesInChunk);
+      } else {
+        selectedSentences.push(
+          ...(
+            moreSentences as {
+              id: string;
+              sentence: string;
+              words: string;
+              baseWords: string;
+              source: any;
+              createdAt: Date;
+              userId: string;
+            }[]
+          ).map((s) => s.sentence)
+        );
       }
-
-      if (allSentences.length < count) {
-        return {
-          error: "Not enough sentences in the global corpus to start the quiz.",
-        };
-      }
-
-      selectedSentences = shuffleArray(allSentences).slice(0, count);
     }
 
     const quizSentences: QuizSentence[] = selectedSentences.map((sentence) => ({
@@ -100,5 +99,35 @@ export async function getQuizSentences(
   } catch (error) {
     console.error("Failed to get quiz sentences:", error);
     return { error: "Could not load sentences for the quiz." };
+  }
+}
+
+/**
+ * NEW: Saves the results of a completed quiz session to the database.
+ */
+export async function saveQuizSession(data: {
+  score: number; // Percentage score (e.g., 80)
+  totalQuestions: number;
+  correctAnswers: number;
+  timeSpent: number; // in seconds
+}) {
+  const user = await getCurrentUser();
+  if (!user) return { error: "Unauthorized" };
+
+  try {
+    await prisma.quizSession.create({
+      data: {
+        userId: user.id,
+        score: data.score,
+        totalQuestions: data.totalQuestions,
+        correctAnswers: data.correctAnswers,
+        timeSpent: data.timeSpent,
+        // difficulty can be added as a parameter if you implement it
+      },
+    });
+    return { success: true };
+  } catch (error) {
+    console.error("Failed to save quiz session:", error);
+    return { error: "Could not save your quiz results." };
   }
 }
